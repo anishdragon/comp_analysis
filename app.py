@@ -281,7 +281,14 @@ with tab1:
                                     if issue_reviews:
                                         # Generate summary for this issue type
                                         try:
-                                            summary = generate_category_summary(issue_type, issue_reviews)
+                                            # Use the selected AI service for summary generation
+                                            if st.session_state.ai_service == "anthropic":
+                                                # Use Anthropic Claude
+                                                summary = utils.anthropic_helper.generate_category_summary(issue_type, issue_reviews)
+                                            else:
+                                                # Use OpenAI
+                                                summary = utils.openai_helper.generate_category_summary(issue_type, issue_reviews)
+                                                
                                             knowledge_base[issue_type] = summary
                                         except Exception as e:
                                             st.error(f"Error generating summary for {issue_type}: {str(e)}")

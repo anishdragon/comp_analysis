@@ -74,19 +74,23 @@ def analyze_review(review_content, review_title="", rating=None):
         
         # Parse the response - Claude API returns content differently from OpenAI
         try:
-            if response.content and len(response.content) > 0:
-                # For Claude API - extract text from the first content block
-                content = response.content[0].text if hasattr(response.content[0], 'text') else None
+            # For Claude API - extract content from response
+            if hasattr(response, 'content') and response.content:
+                # Get the message content
+                content_block = response.content[0]
                 
-                # If text property doesn't exist, try alternate approaches
-                if content is None and hasattr(response.content[0], 'value'):
-                    content = response.content[0].value
+                # Extract the text - Claude API might format responses differently
+                if hasattr(content_block, 'text'):
+                    content = content_block.text
+                elif hasattr(content_block, 'value'):
+                    content = content_block.value
+                else:
+                    # Try to convert the content block to string
+                    content = str(content_block).strip()
                     
-                if content is None:
-                    # Last resort - try to access as dictionary
-                    content = str(response.content[0]).strip()
-                    if content.startswith('{') and content.endswith('}'):
-                        pass  # It's already in JSON format
+                # Ensure we have valid JSON
+                if content and content.startswith('{') and content.endswith('}'): 
+                    pass  # It's already in JSON format
                 
                 if content is not None:
                     result = json.loads(content)
@@ -158,7 +162,18 @@ def generate_category_summary(issue_type, reviews):
         )
         
         # Return the generated summary
-        return response.content[0].text
+        # Extract the text based on different possible response formats
+        if hasattr(response, 'content') and response.content:
+            content_block = response.content[0]
+            
+            if hasattr(content_block, 'text'):
+                return content_block.text
+            elif hasattr(content_block, 'value'):
+                return content_block.value
+            else:
+                return str(content_block)
+        else:
+            raise ValueError("No content in response")
     
     except Exception as e:
         raise Exception(f"Failed to generate summary: {str(e)}")
