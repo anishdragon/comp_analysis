@@ -31,6 +31,8 @@ if 'knowledge_base' not in st.session_state:
     st.session_state.knowledge_base = {}
 if 'ai_service' not in st.session_state:
     st.session_state.ai_service = "anthropic"  # Default to Anthropic Claude
+if 'api_key' not in st.session_state:
+    st.session_state.api_key = ""  # For backward compatibility
 if 'openai_api_key' not in st.session_state:
     st.session_state.openai_api_key = os.environ.get("OPENAI_API_KEY", "")
 if 'anthropic_api_key' not in st.session_state:
@@ -198,9 +200,16 @@ with tab1:
                 
                 # Button to analyze the data
                 if st.button("Analyze Reviews"):
-                    if not st.session_state.api_key:
+                    # Check API key based on selected service
+                    api_key_missing = False
+                    if st.session_state.ai_service == "anthropic" and not st.session_state.anthropic_api_key:
+                        st.error("Please enter your Anthropic API key in the sidebar before analyzing.")
+                        api_key_missing = True
+                    elif st.session_state.ai_service == "openai" and not st.session_state.openai_api_key:
                         st.error("Please enter your OpenAI API key in the sidebar before analyzing.")
-                    else:
+                        api_key_missing = True
+                        
+                    if not api_key_missing:
                         with st.spinner("Analyzing reviews. This may take a few minutes..."):
                             # Create progress bar
                             progress_bar = st.progress(0)
