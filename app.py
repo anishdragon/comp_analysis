@@ -97,6 +97,54 @@ with tab1:
     st.header("Upload Data")
     st.markdown("Upload an Excel file with review data. The file should have columns for datetime, username, review content, and review datetime. Optional columns: review title and rating.")
     
+    # Create a sample file for download
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        if st.button("Download Sample File"):
+            # Create sample data
+            sample_data = {
+                "Date": ["2024-05-01", "2024-05-02", "2024-05-03", "2024-05-04", "2024-05-05"],
+                "Username": ["John Doe", "Jane Smith", "Alex Johnson", "Taylor Wilson", "Sam Brown"],
+                "Review Content": [
+                    "The product arrived damaged. The packaging was also torn when I received it.",
+                    "Customer service was excellent. The representative was very patient and helped me resolve my issue quickly.",
+                    "Delivery was delayed by two days without any communication from the company.",
+                    "Great product quality, exactly as described. Would definitely purchase again.",
+                    "The app keeps crashing every time I try to make a payment. Very frustrating experience."
+                ],
+                "Review Date": ["2024-05-01", "2024-05-02", "2024-05-03", "2024-05-04", "2024-05-05"],
+                "Review Title": ["Damaged Product", "Excellent Support", "Late Delivery", "High Quality", "Technical Issue"],
+                "Rating": [2, 5, 3, 5, 1]
+            }
+            
+            # Create DataFrame
+            sample_df = pd.DataFrame(sample_data)
+            
+            # Convert to Excel
+            buffer = io.BytesIO()
+            sample_df.to_excel(buffer, index=False, engine='openpyxl')
+            buffer.seek(0)
+            
+            # Create download button
+            b64 = base64.b64encode(buffer.read()).decode()
+            href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="sample_reviews.xlsx">Click here to download the sample file</a>'
+            st.markdown(href, unsafe_allow_html=True)
+    
+    with col2:
+        st.info("""
+        **Expected columns in your Excel file:**
+        
+        **Required columns:**
+        - Date/datetime (e.g., Date, Timestamp, Created At)
+        - Username (e.g., User, Customer, Name)
+        - Review Content (e.g., Review, Feedback, Comments)
+        
+        **Optional columns:**
+        - Review Date (e.g., Review Timestamp, Feedback Date)
+        - Review Title (e.g., Title, Subject, Heading)
+        - Rating (e.g., Score, Stars, Satisfaction)
+        """)
+    
     # Excel file uploader
     uploaded_file = st.file_uploader("Choose an Excel file", type=['xlsx', 'xls'])
     

@@ -74,13 +74,17 @@ def analyze_review(review_content, review_title="", rating=None):
         )
         
         # Parse the response
-        result = json.loads(response.choices[0].message.content)
-        
-        # Ensure all required fields are present
-        required_fields = ["sentiment", "aspect", "issue_type", "confidence"]
-        for field in required_fields:
-            if field not in result:
-                raise ValueError(f"Missing required field in response: {field}")
+        content = response.choices[0].message.content
+        if content is not None:
+            result = json.loads(content)
+            
+            # Ensure all required fields are present
+            required_fields = ["sentiment", "aspect", "issue_type", "confidence"]
+            for field in required_fields:
+                if field not in result:
+                    raise ValueError(f"Missing required field in response: {field}")
+        else:
+            raise ValueError("Empty response received from API")
         
         return result
     
