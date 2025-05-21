@@ -138,18 +138,18 @@ with tab1:
         if st.button("Download Sample File"):
             # Create sample data
             sample_data = {
-                "Date": ["2024-05-01", "2024-05-02", "2024-05-03", "2024-05-04", "2024-05-05"],
-                "Username": ["John Doe", "Jane Smith", "Alex Johnson", "Taylor Wilson", "Sam Brown"],
+                "Date": ["2023-01-15", "2023-01-16", "2023-01-17", "2023-01-18", "2023-01-19"],
+                "Username": ["Customer1", "Customer2", "Customer3", "Customer4", "Customer5"],
                 "Review Content": [
-                    "The product arrived damaged. The packaging was also torn when I received it.",
-                    "Customer service was excellent. The representative was very patient and helped me resolve my issue quickly.",
-                    "Delivery was delayed by two days without any communication from the company.",
-                    "Great product quality, exactly as described. Would definitely purchase again.",
-                    "The app keeps crashing every time I try to make a payment. Very frustrating experience."
+                    "Product received was broken on arrival. The box was also damaged during shipping.",
+                    "Support team was helpful and resolved my issue within minutes. Very satisfied!",
+                    "Order took 5 days longer than promised with no updates or explanation.",
+                    "Excellent quality and meets all specifications. Will order again in the future.",
+                    "Mobile application constantly crashes when trying to complete checkout process."
                 ],
-                "Review Date": ["2024-05-01", "2024-05-02", "2024-05-03", "2024-05-04", "2024-05-05"],
-                "Review Title": ["Damaged Product", "Excellent Support", "Late Delivery", "High Quality", "Technical Issue"],
-                "Rating": [2, 5, 3, 5, 1]
+                "Review Date": ["2023-01-15", "2023-01-16", "2023-01-17", "2023-01-18", "2023-01-19"],
+                "Review Title": ["Broken Item", "Great Support", "Shipping Delay", "Perfect Product", "App Issues"],
+                "Rating": [1, 5, 2, 5, 2]
             }
             
             # Create DataFrame
@@ -316,7 +316,17 @@ with tab2:
         
         # Show categorized data
         analyzed_df = pd.DataFrame(st.session_state.analyzed_data)
-        st.dataframe(analyzed_df[['username', 'review_content', 'sentiment', 'aspect', 'issue_type', 'confidence']], use_container_width=True)
+        
+        # Basic columns for display
+        display_columns = ['username', 'review_content', 'sentiment', 'aspect', 'issue_type', 'confidence']
+        
+        # Add enhanced sentiment analysis columns if available
+        enhanced_columns = []
+        for col in ['sentiment_score', 'key_emotions', 'urgency_level']:
+            if col in analyzed_df.columns:
+                enhanced_columns.append(col)
+                
+        st.dataframe(analyzed_df[display_columns + enhanced_columns], use_container_width=True)
         
         # Visualizations
         st.header("Visualizations")
@@ -337,6 +347,22 @@ with tab2:
                 color_discrete_map={'Positive': '#2ECC71', 'Negative': '#E74C3C'}
             )
             st.plotly_chart(fig1, use_container_width=True)
+            
+            # Sentiment Score Distribution (if available)
+            if 'sentiment_score' in analyzed_df.columns:
+                fig_score = px.histogram(
+                    analyzed_df, 
+                    x='sentiment_score',
+                    title='Sentiment Score Distribution (-1 to +1)',
+                    nbins=20,
+                    color_discrete_sequence=['#3498DB']
+                )
+                fig_score.update_layout(
+                    xaxis_title='Sentiment Score', 
+                    yaxis_title='Count',
+                    xaxis=dict(tickmode='linear', tick0=-1, dtick=0.2)
+                )
+                st.plotly_chart(fig_score, use_container_width=True)
             
             # Issue Type Distribution
             issue_counts = analyzed_df['issue_type'].value_counts().reset_index()

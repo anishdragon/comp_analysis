@@ -42,15 +42,23 @@ def analyze_review(review_content, review_title="", rating=None):
     1. Sentiment: Determine if the overall review is "Positive" or "Negative"
     2. Aspect: Identify what the customer is primarily discussing - "Product", "Service", or "Other"
     3. Issue Type: Categorize the specific issue being discussed, such as:
-       - For Product: "Quality Issue", "Functionality Issue", "Design Issue", "Durability Issue", etc.
-       - For Service: "Customer Support Issue", "Delivery Issue", "Logistics Issue", "Response Time Issue", etc.
-       - For Other: "Pricing Issue", "Policy Issue", "Website Issue", "App Issue", etc.
+       - For Product: "Quality Issue", "Functionality Issue", "Design Issue", "Durability Issue", "Product Defect", etc.
+       - For Service: "Customer Support Issue", "Delivery Issue", "Logistics Issue", "Response Time Issue", "Installation Issue", etc.
+       - For Other: "Pricing Issue", "Policy Issue", "Website Issue", "App Issue", "Documentation Issue", etc.
+    
+    Also classify the sentiment analysis with more detail - in addition to positive/negative, include:
+    - Sentiment Score: A numeric score from -1.0 (extremely negative) to 1.0 (extremely positive)
+    - Key Emotions: List the main emotions expressed (anger, satisfaction, frustration, joy, disappointment, etc.)
+    - Urgency Level: How urgent the issue appears (high, medium, low)
     
     Provide a confidence score (0.0 to 1.0) for your categorization.
     
     Respond with only JSON in this format:
     {
         "sentiment": "Positive or Negative",
+        "sentiment_score": number between -1.0 and 1.0,
+        "key_emotions": ["emotion1", "emotion2", "..."],
+        "urgency_level": "High, Medium, or Low",
         "aspect": "Product, Service, or Other",
         "issue_type": "Specific issue category",
         "confidence": number between 0 and 1
