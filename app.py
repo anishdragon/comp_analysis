@@ -28,12 +28,6 @@ if 'categories' not in st.session_state:
     st.session_state.categories = {}
 if 'knowledge_base' not in st.session_state:
     st.session_state.knowledge_base = {}
-if 'ai_service' not in st.session_state:
-    st.session_state.ai_service = "anthropic"  # Default to Anthropic Claude
-if 'api_key' not in st.session_state:
-    st.session_state.api_key = ""  # For backward compatibility
-if 'openai_api_key' not in st.session_state:
-    st.session_state.openai_api_key = os.environ.get("OPENAI_API_KEY", "")
 if 'anthropic_api_key' not in st.session_state:
     st.session_state.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
 
@@ -45,37 +39,13 @@ st.markdown("Upload user reviews to analyze sentiment, categorize issues, and bu
 with st.sidebar:
     st.header("Configuration")
     
-    # AI Service selection
-    ai_service = st.radio(
-        "Select AI Service",
-        options=["Anthropic Claude", "OpenAI GPT"],
-        index=0 if st.session_state.ai_service == "anthropic" else 1,
-        help="Choose which AI service to use for analyzing reviews"
-    )
+    # Anthropic API Key input
+    anthropic_key = st.text_input("Anthropic API Key", value=st.session_state.anthropic_api_key, type="password")
+    if anthropic_key != st.session_state.anthropic_api_key:
+        st.session_state.anthropic_api_key = anthropic_key
+        os.environ["ANTHROPIC_API_KEY"] = anthropic_key
     
-    # Update session state based on selection
-    if ai_service == "Anthropic Claude" and st.session_state.ai_service != "anthropic":
-        st.session_state.ai_service = "anthropic"
-    elif ai_service == "OpenAI GPT" and st.session_state.ai_service != "openai":
-        st.session_state.ai_service = "openai"
-    
-    # Display the appropriate API key input based on selection
-    if st.session_state.ai_service == "anthropic":
-        # Anthropic API Key input
-        anthropic_key = st.text_input("Anthropic API Key", value=st.session_state.anthropic_api_key, type="password")
-        if anthropic_key != st.session_state.anthropic_api_key:
-            st.session_state.anthropic_api_key = anthropic_key
-            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
-        
-        st.info("Anthropic Claude is a powerful AI that can analyze your reviews and provide detailed insights.")
-    else:
-        # OpenAI API Key input
-        openai_key = st.text_input("OpenAI API Key", value=st.session_state.openai_api_key, type="password")
-        if openai_key != st.session_state.openai_api_key:
-            st.session_state.openai_api_key = openai_key
-            os.environ["OPENAI_API_KEY"] = openai_key
-        
-        st.info("OpenAI GPT is widely used for text analysis and can provide high-quality categorization of your reviews.")
+    st.info("Anthropic Claude is a powerful AI that can analyze your reviews and provide detailed insights.")
     
     st.markdown("---")
     
@@ -236,24 +206,15 @@ with tab1:
                                 if pd.isna(review_content) or review_content.strip() == "":
                                     continue
                                 
-                                # Select which API to use based on user's choice
+                                # Use Anthropic Claude for analysis
                                 try:
-                                    if st.session_state.ai_service == "anthropic":
-                                        # Check if Anthropic API key is provided
-                                        if not st.session_state.anthropic_api_key:
-                                            st.error("Please enter your Anthropic API key in the sidebar before analyzing.")
-                                            break
-                                        
-                                        # Use Anthropic Claude
-                                        result = utils.anthropic_helper.analyze_review(review_content, review_title, rating)
-                                    else:
-                                        # Check if OpenAI API key is provided
-                                        if not st.session_state.openai_api_key:
-                                            st.error("Please enter your OpenAI API key in the sidebar before analyzing.")
-                                            break
-                                        
-                                        # Use OpenAI
-                                        result = utils.openai_helper.analyze_review(review_content, review_title, rating)
+                                    # Check if Anthropic API key is provided
+                                    if not st.session_state.anthropic_api_key:
+                                        st.error("Please enter your Anthropic API key in the sidebar before analyzing.")
+                                        break
+                                    
+                                    # Use Anthropic Claude
+                                    result = analyze_review(review_content, review_title, rating)
                                     
                                     # Add results to the analyzed data
                                     result_with_metadata = {
@@ -290,12 +251,8 @@ with tab1:
                                         # Generate summary for this issue type
                                         try:
                                             # Use the selected AI service for summary generation
-                                            if st.session_state.ai_service == "anthropic":
-                                                # Use Anthropic Claude
-                                                summary = utils.anthropic_helper.generate_category_summary(issue_type, issue_reviews)
-                                            else:
-                                                # Use OpenAI
-                                                summary = utils.openai_helper.generate_category_summary(issue_type, issue_reviews)
+                                            # Use Anthropic Claude exclusively
+                                            summary = generate_category_summary(issue_type, issue_reviews)
                                                 
                                             knowledge_base[issue_type] = summary
                                         except Exception as e:
