@@ -7,11 +7,10 @@ import io
 import base64
 from datetime import datetime
 
-# Import helper functions from both APIs
+# Import helper functions
 from utils.data_processor import process_excel_file, export_knowledge_base
-# We'll dynamically select which API to use
-import utils.openai_helper
-import utils.anthropic_helper
+# Import Anthropic helper functions
+from utils.anthropic_helper import analyze_review, generate_category_summary
 
 # Set page configuration
 st.set_page_config(
