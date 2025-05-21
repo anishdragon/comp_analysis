@@ -390,6 +390,26 @@ with tab2:
             )
             st.plotly_chart(fig2, use_container_width=True)
             
+            # Urgency Level Distribution (if available)
+            if 'urgency_level' in analyzed_df.columns:
+                # Define color map for urgency levels
+                urgency_colors = {'High': '#E74C3C', 'Medium': '#F39C12', 'Low': '#2ECC71'}
+                
+                # Count occurrences of each urgency level
+                urgency_counts = analyzed_df['urgency_level'].value_counts().reset_index()
+                urgency_counts.columns = ['Urgency', 'Count']
+                
+                # Create visualization
+                fig_urgency = px.bar(
+                    urgency_counts, 
+                    x='Urgency', 
+                    y='Count',
+                    title='Urgency Level Distribution',
+                    color='Urgency',
+                    color_discrete_map=urgency_colors
+                )
+                st.plotly_chart(fig_urgency, use_container_width=True)
+            
             # Confidence Distribution
             fig4 = px.histogram(
                 analyzed_df, 
@@ -400,6 +420,74 @@ with tab2:
             )
             fig4.update_layout(xaxis_title='Confidence Score', yaxis_title='Count')
             st.plotly_chart(fig4, use_container_width=True)
+        
+        # Emotions Analysis (if available)
+        if 'key_emotions' in analyzed_df.columns:
+            st.subheader("Key Emotions Analysis")
+            
+            # Process and extract emotions from the key_emotions column
+            all_emotions = []
+            for emotions_list in analyzed_df['key_emotions']:
+                # Check if it's a string representation of a list
+                if isinstance(emotions_list, str):
+                    # Clean the string to extract just the emotion words
+                    emotions_str = emotions_list.replace('[', '').replace(']', '').replace("'", "").replace('"', '')
+                    emotions = [e.strip() for e in emotions_str.split(',') if e.strip()]
+                    all_emotions.extend(emotions)
+                # If it's already a list
+                elif isinstance(emotions_list, list):
+                    all_emotions.extend(emotions_list)
+            
+            # Count frequency of each emotion
+            from collections import Counter
+            emotion_counts = Counter(all_emotions)
+            
+            # Convert to DataFrame for plotting
+            emotion_df = pd.DataFrame({
+                'Emotion': list(emotion_counts.keys()),
+                'Count': list(emotion_counts.values())
+            })
+            
+            # Sort by count for better visualization
+            emotion_df = emotion_df.sort_values('Count', ascending=False)
+            
+            # Take top 10 emotions if there are more
+            if len(emotion_df) > 10:
+                emotion_df = emotion_df.head(10)
+                
+            # Create bar chart
+            fig_emotions = px.bar(
+                emotion_df,
+                x='Emotion',
+                y='Count',
+                title='Top Customer Emotions',
+                color='Emotion'
+            )
+            st.plotly_chart(fig_emotions, use_container_width=True)
+            
+            # Create word cloud if there are enough emotions
+            if len(all_emotions) >= 5:
+                st.subheader("Emotion Word Cloud")
+                try:
+                    from wordcloud import WordCloud
+                    import matplotlib.pyplot as plt
+                    
+                    # Create word cloud
+                    wordcloud = WordCloud(
+                        width=800, 
+                        height=400, 
+                        background_color='white',
+                        colormap='viridis',
+                        max_words=100
+                    ).generate(' '.join(all_emotions))
+                    
+                    # Display word cloud using matplotlib
+                    fig, ax = plt.subplots(figsize=(10, 5))
+                    ax.imshow(wordcloud, interpolation='bilinear')
+                    ax.axis('off')
+                    st.pyplot(fig)
+                except ImportError:
+                    st.info("WordCloud package not available. Install it with 'pip install wordcloud' to see the word cloud visualization.")
         
         # Time Series Analysis (if datetime is available)
         if 'datetime' in analyzed_df.columns and not analyzed_df['datetime'].isna().all():
