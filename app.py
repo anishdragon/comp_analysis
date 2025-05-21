@@ -9,7 +9,7 @@ from datetime import datetime
 
 # Import helper functions
 from utils.data_processor import process_excel_file, export_knowledge_base
-# Import Anthropic helper functions
+# Import Anthropic helper functions (Claude-only version)
 from utils.anthropic_helper import analyze_review, generate_category_summary
 
 # Set page configuration
@@ -250,8 +250,7 @@ with tab1:
                                     if issue_reviews:
                                         # Generate summary for this issue type
                                         try:
-                                            # Use the selected AI service for summary generation
-                                            # Use Anthropic Claude exclusively
+                                            # Use Anthropic Claude for summarization
                                             summary = generate_category_summary(issue_type, issue_reviews)
                                                 
                                             knowledge_base[issue_type] = summary
