@@ -1,0 +1,659 @@
+import requests
+from bs4 import BeautifulSoup
+import pandas as pd
+import time
+import random
+import json
+import os
+from datetime import datetime
+import logging
+from fake_useragent import UserAgent
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
+from selenium.webdriver.common.action_chains import ActionChains
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("trustpilot_scraper.log"),
+        logging.StreamHandler()
+    ]
+)
+
+class TrustpilotScraper:
+    def __init__(self, company_name="target", use_selenium=True, checkpoint_dir="checkpoints", batch_size=10):
+        """Initialize the TrustpilotScraper with a company name."""
+        self.company_name = company_name
+        self.base_url = f"https://www.trustpilot.com/review/{company_name}.com"
+        self.user_agent = UserAgent()
+        self.session = self._create_session()
+        self.reviews = []
+        self.use_selenium = use_selenium
+        self.driver = None
+        self.batch_size = batch_size  # Save full dataset every batch_size pages
+        
+        # Checkpointing related attributes
+        self.checkpoint_dir = checkpoint_dir
+        os.makedirs(checkpoint_dir, exist_ok=True)
+        
+        if use_selenium:
+            self._setup_selenium()
+    
+    def _setup_selenium(self):
+        """Set up the Selenium WebDriver with enhanced settings."""
+        try:
+            chrome_options = Options()
+            chrome_options.add_argument("--headless")  # Run in headless mode
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            chrome_options.add_argument(f"user-agent={self.user_agent.random}")
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")  # Hide webdriver
+            chrome_options.add_argument("--disable-notifications")
+            chrome_options.add_argument("--disable-popup-blocking")
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            
+            # Add proxy rotation if needed
+            # chrome_options.add_argument('--proxy-server=http://your-proxy-server:port')
+            
+            self.driver = webdriver.Chrome(options=chrome_options)
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            # Set page load timeout
+            self.driver.set_page_load_timeout(30)
+            
+            logging.info("Selenium WebDriver initialized successfully")
+        except Exception as e:
+            logging.error(f"Failed to initialize Selenium WebDriver: {str(e)}")
+            self.use_selenium = False
+    
+    def _create_session(self):
+        """Create a session with rotating user agents and other headers to avoid detection."""
+        session = requests.Session()
+        session.headers.update({
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Sec-Fetch-User": "?1",
+            "Cache-Control": "max-age=0",
+        })
+        return session
+    
+    def _update_headers(self):
+        """Update headers with a new random user agent."""
+        self.session.headers.update({
+            "User-Agent": self.user_agent.random
+        })
+    
+    def _random_delay(self, min_seconds=2, max_seconds=7):
+        """Add a random delay between requests to mimic human behavior."""
+        delay = random.uniform(min_seconds, max_seconds)
+        time.sleep(delay)
+    
+    def _parse_review_soup(self, review_element):
+        """Extract data from a single review element using BeautifulSoup."""
+        try:
+            # Find the star rating
+            rating_div = review_element.find('div', {'data-service-review-rating': True})
+            rating = int(rating_div['data-service-review-rating']) if rating_div else None
+            
+            # Find the review title
+            title_element = review_element.find('h2', {'data-service-review-title-typography': True})
+            title = title_element.text.strip() if title_element else ""
+            
+            # Find the review content
+            # First try to find expanded content (for longer reviews)
+            content_div = review_element.find('div', {'data-service-review-content-typography': True})
+            
+            # If not found, try with data-service-review-expanded-content-typography
+            if not content_div:
+                content_div = review_element.find('div', {'data-service-review-expanded-content-typography': True})
+            
+            # If still not found, try with data-service-review-text-typography
+            if not content_div:
+                content_div = review_element.find('div', {'data-service-review-text-typography': True})
+            
+            # If still not found, try with standard <p> elements within the review container
+            if not content_div:
+                content_p = review_element.find('p')
+                content = content_p.text.strip() if content_p else ""
+            else:
+                content = content_div.text.strip()
+            
+            # Check if there's a "Read more" link that we can't click with BeautifulSoup
+            has_read_more = bool(review_element.find('button', {'data-service-review-read-more-button': True}))
+            
+            # Find the review date
+            date_element = review_element.find('time')
+            date = date_element['datetime'] if date_element else ""
+            
+            # Find the reviewer's name
+            reviewer_element = review_element.find('span', {'data-consumer-name-typography': True})
+            reviewer = reviewer_element.text.strip() if reviewer_element else ""
+            
+            # Find if the reviewer has verification
+            verified = bool(review_element.find('div', {'data-verification-label': True}))
+            
+            # Find the reviewer's location if available
+            location_element = review_element.find('div', {'data-consumer-country-typography': True})
+            location = location_element.text.strip() if location_element else ""
+            
+            # Find review ID for unique identification
+            review_id = ""
+            try:
+                # Extract the ID from the article's data attributes or other identifiers
+                if 'id' in review_element.attrs:
+                    review_id = review_element['id']
+                # If no ID found, create a surrogate ID based on reviewer name and date
+                if not review_id:
+                    review_id = f"{reviewer}_{date}".replace(" ", "_")
+            except:
+                # Fallback ID
+                review_id = f"review_{hash(content[:100])}"
+            
+            return {
+                'review_id': review_id,
+                'rating': rating,
+                'title': title,
+                'content': content,
+                'has_read_more': has_read_more,  # Flag if review has "Read more" button
+                'date': date,
+                'reviewer': reviewer,
+                'verified': verified,
+                'location': location,
+                'scraped_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logging.error(f"Error parsing review with BeautifulSoup: {str(e)}")
+            return None
+    
+    def _expand_review_content(self, review_element):
+        """Try to expand a review's content by clicking the "Read more" button."""
+        try:
+            # Try to find the "Read more" button
+            read_more_button = review_element.find_element(By.CSS_SELECTOR, 'button[data-service-review-read-more-button]')
+            
+            # Scroll to the button to make sure it's visible
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", read_more_button)
+            time.sleep(0.5)
+            
+            # Try different methods to click the button
+            try:
+                # Method 1: Direct click
+                read_more_button.click()
+            except (ElementClickInterceptedException, Exception):
+                try:
+                    # Method 2: JavaScript click
+                    self.driver.execute_script("arguments[0].click();", read_more_button)
+                except Exception:
+                    try:
+                        # Method 3: ActionChains click
+                        ActionChains(self.driver).move_to_element(read_more_button).click().perform()
+                    except Exception as e:
+                        logging.warning(f"All attempts to click 'Read more' button failed: {str(e)}")
+                        return False
+            
+            # Wait a moment for the content to expand
+            time.sleep(1.5)
+            return True
+            
+        except NoSuchElementException:
+            # No "Read more" button found, which is fine
+            return False
+        except Exception as e:
+            logging.warning(f"Error expanding review content: {str(e)}")
+            return False
+    
+    def _parse_review_selenium(self, review_element):
+        """Extract data from a single review element using Selenium with improved content extraction."""
+        try:
+            # Try to extract a unique ID for the review
+            try:
+                review_id = review_element.get_attribute('id')
+                if not review_id:
+                    # Create a temporary ID based on the inner text
+                    temp_text = review_element.text[:50]
+                    review_id = f"review_{hash(temp_text)}"
+            except:
+                review_id = f"review_{random.randint(10000, 99999)}"
+            
+            # Find the star rating
+            try:
+                rating_div = review_element.find_element(By.CSS_SELECTOR, 'div[data-service-review-rating]')
+                rating = int(rating_div.get_attribute('data-service-review-rating'))
+            except NoSuchElementException:
+                rating = None
+            
+            # Find the review title
+            try:
+                title_element = review_element.find_element(By.CSS_SELECTOR, 'h2[data-service-review-title-typography]')
+                title = title_element.text.strip()
+            except NoSuchElementException:
+                title = ""
+            
+            # Find the reviewer's name first (for ID creation)
+            try:
+                reviewer_element = review_element.find_element(By.CSS_SELECTOR, 'span[data-consumer-name-typography]')
+                reviewer = reviewer_element.text.strip()
+            except NoSuchElementException:
+                reviewer = ""
+            
+            # Find the review date
+            try:
+                date_element = review_element.find_element(By.TAG_NAME, 'time')
+                date = date_element.get_attribute('datetime')
+            except NoSuchElementException:
+                date = ""
+                
+            # Create a better review ID if possible
+            if reviewer and date:
+                review_id = f"{reviewer}_{date}".replace(" ", "_").replace(":", "-")
+            
+            # Check if there's a "Read more" button and try to click it
+            has_read_more = self._expand_review_content(review_element)
+            
+            # Find the review content after possibly expanding it
+            content = ""
+            
+            # Try several possible selectors for content
+            content_selectors = [
+                'div[data-service-review-content-typography]',
+                'div[data-service-review-expanded-content-typography]',
+                'div[data-service-review-text-typography]',
+                'p[data-service-review-text-typography]',
+                'p.review-content'
+            ]
+            
+            for selector in content_selectors:
+                try:
+                    content_div = review_element.find_element(By.CSS_SELECTOR, selector)
+                    if content_div:
+                        content = content_div.text.strip()
+                        break
+                except NoSuchElementException:
+                    continue
+            
+            # If still no content found, try to get it from any <p> inside the review
+            if not content:
+                try:
+                    paragraphs = review_element.find_elements(By.TAG_NAME, 'p')
+                    if paragraphs:
+                        content = " ".join([p.text.strip() for p in paragraphs])
+                except:
+                    pass
+            
+            # If still no content, get the text of the entire review element minus the title
+            if not content and title:
+                try:
+                    full_text = review_element.text
+                    # Remove the title from the full text to get just the content
+                    content = full_text.replace(title, "", 1).strip()
+                except:
+                    pass
+            
+            # Find if the reviewer has verification
+            try:
+                verified = bool(review_element.find_element(By.CSS_SELECTOR, 'div[data-verification-label]'))
+            except NoSuchElementException:
+                verified = False
+            
+            # Find the reviewer's location if available
+            try:
+                location_element = review_element.find_element(By.CSS_SELECTOR, 'div[data-consumer-country-typography]')
+                location = location_element.text.strip()
+            except NoSuchElementException:
+                location = ""
+            
+            return {
+                'review_id': review_id,
+                'rating': rating,
+                'title': title,
+                'content': content,
+                'has_read_more': has_read_more,
+                'date': date,
+                'reviewer': reviewer,
+                'verified': verified,
+                'location': location,
+                'scraped_at': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logging.error(f"Error parsing review with Selenium: {str(e)}")
+            return None
+    
+    def _save_checkpoint(self, page_num, page_reviews):
+        """Save reviews from a page as a checkpoint."""
+        if not page_reviews:
+            return
+            
+        checkpoint_filename = os.path.join(
+            self.checkpoint_dir, 
+            f"{self.company_name}_page_{page_num}.json"
+        )
+        
+        with open(checkpoint_filename, 'w', encoding='utf-8') as f:
+            json.dump(page_reviews, f, ensure_ascii=False, indent=4)
+        
+        logging.info(f"Checkpoint saved for page {page_num} with {len(page_reviews)} reviews")
+    
+    def _load_checkpoints(self):
+        """Load all existing checkpoints."""
+        reviews = []
+        checkpoint_files = [f for f in os.listdir(self.checkpoint_dir) 
+                           if f.startswith(f"{self.company_name}_page_") and f.endswith(".json")]
+        
+        for checkpoint_file in checkpoint_files:
+            try:
+                filepath = os.path.join(self.checkpoint_dir, checkpoint_file)
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    page_reviews = json.load(f)
+                    reviews.extend(page_reviews)
+                    
+                logging.info(f"Loaded checkpoint: {checkpoint_file} with {len(page_reviews)} reviews")
+            except Exception as e:
+                logging.error(f"Error loading checkpoint {checkpoint_file}: {str(e)}")
+        
+        return reviews
+    
+    def _get_completed_pages(self):
+        """Get a list of already scraped page numbers from checkpoints."""
+        completed_pages = []
+        checkpoint_files = [f for f in os.listdir(self.checkpoint_dir) 
+                           if f.startswith(f"{self.company_name}_page_") and f.endswith(".json")]
+        
+        for checkpoint_file in checkpoint_files:
+            try:
+                # Extract page number from filename like "target_page_5.json"
+                page_str = checkpoint_file.replace(f"{self.company_name}_page_", "").replace(".json", "")
+                page_num = int(page_str)
+                completed_pages.append(page_num)
+            except:
+                pass
+                
+        return completed_pages
+    
+    def scrape_page_selenium(self, page_num=1, max_retry=3):
+        """Scrape a single page of reviews using Selenium with retry mechanism."""
+        if not self.driver:
+            logging.error("Selenium WebDriver not initialized")
+            return []
+        
+        url = f"{self.base_url}?page={page_num}"
+        logging.info(f"Scraping page {page_num} with Selenium: {url}")
+        
+        for retry in range(max_retry):
+            try:
+                # Update the User-Agent for each retry
+                if retry > 0:
+                    self.driver.execute_cdp_cmd('Network.setUserAgentOverride', 
+                                               {"userAgent": self.user_agent.random})
+                    logging.info(f"Retry {retry} for page {page_num} with fresh User-Agent")
+                
+                self.driver.get(url)
+                
+                # Wait for page to load
+                WebDriverWait(self.driver, 15).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, 'article[data-service-review-card-paper]'))
+                )
+                
+                # Handle cookie consent if it appears
+                try:
+                    cookie_button = WebDriverWait(self.driver, 3).until(
+                        EC.element_to_be_clickable((By.ID, 'onetrust-accept-btn-handler'))
+                    )
+                    cookie_button.click()
+                    time.sleep(1)
+                except TimeoutException:
+                    # No cookie consent found or already accepted
+                    pass
+                
+                # Scroll down gradually to load all reviews and avoid detection
+                self._scroll_page_gradually()
+                
+                # Find all review containers
+                review_elements = self.driver.find_elements(By.CSS_SELECTOR, 'article[data-service-review-card-paper]')
+                
+                page_reviews = []
+                for review_element in review_elements:
+                    review_data = self._parse_review_selenium(review_element)
+                    if review_data:
+                        page_reviews.append(review_data)
+                    # Add a small delay between reviews to avoid detection
+                    time.sleep(random.uniform(0.3, 1.0))
+                
+                logging.info(f"Found {len(page_reviews)} reviews on page {page_num}")
+                
+                # If we get here without exceptions, break the retry loop
+                return page_reviews
+                
+            except Exception as e:
+                logging.error(f"Error scraping page {page_num} with Selenium (attempt {retry+1}/{max_retry}): {str(e)}")
+                if retry < max_retry - 1:
+                    # Wait longer between retries
+                    time.sleep(random.uniform(5, 15))
+                    # Refresh the driver state
+                    self._random_delay(5, 10)
+                else:
+                    return []
+    
+    def _scroll_page_gradually(self):
+        """Scroll down gradually to simulate human behavior and ensure all content loads."""
+        try:
+            # Get the page height
+            total_height = self.driver.execute_script("return document.body.scrollHeight")
+            
+            # Scroll in multiple steps
+            for i in range(1, 10):
+                scroll_height = (total_height * i) // 10
+                self.driver.execute_script(f"window.scrollTo(0, {scroll_height});")
+                # Random pause between scrolls
+                time.sleep(random.uniform(0.5, 1.5))
+            
+            # Final scroll to bottom
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            
+            # Scroll back up a bit (sometimes this helps load elements)
+            self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight * 0.8);")
+            time.sleep(1)
+            
+        except Exception as e:
+            logging.error(f"Error during gradual scrolling: {str(e)}")
+    
+    def scrape_page_requests(self, page_num=1, max_retry=3):
+        """Scrape a single page of reviews using requests and BeautifulSoup with retry mechanism."""
+        url = f"{self.base_url}?page={page_num}"
+        logging.info(f"Scraping page {page_num} with requests: {url}")
+        
+        for retry in range(max_retry):
+            self._update_headers()
+            self._random_delay()
+            
+            try:
+                response = self.session.get(url, timeout=30)
+                response.raise_for_status()
+                
+                soup = BeautifulSoup(response.text, 'html.parser')
+                
+                # Find all review containers
+                review_elements = soup.find_all('article', {'data-service-review-card-paper': True})
+                
+                if not review_elements:
+                    logging.warning(f"No review elements found on page {page_num} (attempt {retry+1}/{max_retry})")
+                    if retry < max_retry - 1:
+                        time.sleep(random.uniform(5, 15))
+                        continue
+                    else:
+                        return []
+                
+                page_reviews = []
+                for review_element in review_elements:
+                    review_data = self._parse_review_soup(review_element)
+                    if review_data:
+                        page_reviews.append(review_data)
+                
+                logging.info(f"Found {len(page_reviews)} reviews on page {page_num}")
+                return page_reviews
+            
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Request error on page {page_num} (attempt {retry+1}/{max_retry}): {str(e)}")
+                if retry < max_retry - 1:
+                    time.sleep(random.uniform(5, 15))
+                else:
+                    return []
+            except Exception as e:
+                logging.error(f"Error scraping page {page_num} (attempt {retry+1}/{max_retry}): {str(e)}")
+                if retry < max_retry - 1:
+                    time.sleep(random.uniform(5, 15))
+                else:
+                    return []
+    
+    def scrape_page(self, page_num=1):
+        """Scrape a single page of reviews using either Selenium or requests."""
+        if self.use_selenium and self.driver:
+            return self.scrape_page_selenium(page_num)
+        else:
+            return self.scrape_page_requests(page_num)
+    
+    def scrape_reviews(self, num_pages=5, resume=True):
+        """Scrape multiple pages of reviews with checkpoint recovery."""
+        # Check for existing reviews to resume from
+        if resume:
+            logging.info("Looking for checkpoints to resume scraping...")
+            self.reviews = self._load_checkpoints()
+            completed_pages = self._get_completed_pages()
+            logging.info(f"Found {len(self.reviews)} existing reviews from {len(completed_pages)} completed pages")
+        else:
+            self.reviews = []
+            completed_pages = []
+        
+        for page_num in range(1, num_pages + 1):
+            # Skip already completed pages
+            if page_num in completed_pages:
+                logging.info(f"Skipping page {page_num} as it's already scraped")
+                continue
+            
+            # Scrape the page
+            page_reviews = self.scrape_page(page_num)
+            
+            # Save checkpoint even if the page is empty (to mark it as scraped)
+            self._save_checkpoint(page_num, page_reviews)
+            
+            # Add the reviews to our collection
+            self.reviews.extend(page_reviews)
+            
+            # Log progress
+            logging.info(f"Progress: {page_num}/{num_pages} pages | Total reviews: {len(self.reviews)}")
+            
+            # Save complete dataset more frequently (after every batch_size pages)
+            if page_num % self.batch_size == 0:
+                self.save_to_json(f"{self.company_name}_trustpilot_reviews_batch_{page_num // self.batch_size}.json")
+                self.save_to_csv(f"{self.company_name}_trustpilot_reviews_batch_{page_num // self.batch_size}.csv")
+            
+            # Add a longer delay between pages
+            self._random_delay(3, 12)
+        
+        logging.info(f"Scraped a total of {len(self.reviews)} reviews")
+        return self.reviews
+    
+    def save_to_csv(self, filename=None):
+        """Save the scraped reviews to a CSV file."""
+        if not filename:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{self.company_name}_trustpilot_reviews_{timestamp}.csv"
+        
+        if self.reviews:
+            df = pd.DataFrame(self.reviews)
+            df.to_csv(filename, index=False)
+            logging.info(f"Reviews saved to {filename}")
+            return filename
+        else:
+            logging.warning("No reviews to save")
+            return None
+    
+    def save_to_json(self, filename=None):
+        """Save the scraped reviews to a JSON file."""
+        if not filename:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{self.company_name}_trustpilot_reviews_{timestamp}.json"
+        
+        if self.reviews:
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(self.reviews, f, ensure_ascii=False, indent=4)
+            logging.info(f"Reviews saved to {filename}")
+            return filename
+        else:
+            logging.warning("No reviews to save")
+            return None
+    
+    def merge_checkpoints(self):
+        """Merge all checkpoints into one consolidated dataset."""
+        self.reviews = self._load_checkpoints()
+        
+        if self.reviews:
+            # Remove duplicates by review_id
+            seen_ids = set()
+            unique_reviews = []
+            
+            for review in self.reviews:
+                if 'review_id' in review and review['review_id'] not in seen_ids:
+                    seen_ids.add(review['review_id'])
+                    unique_reviews.append(review)
+            
+            self.reviews = unique_reviews
+            logging.info(f"Merged checkpoints into {len(self.reviews)} unique reviews")
+            
+            # Save the consolidated dataset
+            return self.save_to_json("merged_checkpoints.json")
+        else:
+            logging.warning("No reviews found in checkpoints to merge")
+            return None
+    
+    def close(self):
+        """Close the Selenium WebDriver if it's open."""
+        if self.driver:
+            try:
+                self.driver.quit()
+                logging.info("Selenium WebDriver closed")
+            except Exception as e:
+                logging.error(f"Error closing Selenium WebDriver: {str(e)}")
+
+def main():
+    """Main function to run the scraper."""
+    # Create a scraper instance for Target with a batch size of 5 (save full dataset every 5 pages)
+    scraper = TrustpilotScraper(company_name="target", use_selenium=True, checkpoint_dir="trustpilot_checkpoints", batch_size=5)
+    
+    # Set the number of pages to scrape
+    num_pages = 250
+    
+    try:
+        # Scrape the reviews with checkpoint-based resume capability
+        reviews = scraper.scrape_reviews(num_pages, resume=True)
+        
+        # Merge all checkpoints for safety
+        scraper.merge_checkpoints()
+        
+        # Save the final results to CSV and JSON
+        scraper.save_to_csv()
+        scraper.save_to_json()
+        
+        print(f"Successfully scraped {len(reviews)} reviews from up to {num_pages} pages")
+    except Exception as e:
+        logging.error(f"Error in main function: {str(e)}")
+    finally:
+        # Make sure to close the WebDriver
+        scraper.close()
+
+if __name__ == "__main__":
+    main()

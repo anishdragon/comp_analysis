@@ -1,0 +1,387 @@
+# Best Buy App Reviews Raw Scraper - Jupyter Notebook
+# This scraper collects ALL reviews from the Best Buy app with no analysis/visualization
+
+# Install required packages (if not already installed)
+!pip install google-play-scraper pandas tqdm fake-useragent xlsxwriter ipywidgets
+
+# Import libraries
+import time
+import random
+import pandas as pd
+import numpy as np
+from datetime import datetime
+import logging
+from tqdm.notebook import tqdm
+from google_play_scraper import Sort, reviews, app
+from IPython.display import display, HTML, clear_output
+from fake_useragent import UserAgent
+
+# Configure logging for Jupyter
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger("TargetReviewsScraper")
+
+class BestBuyRawReviewsScraper:
+    def __init__(self, app_id="com.target.ui", language="en", country="us", 
+                 min_delay=2.0, max_delay=5.0, sort_method=Sort.NEWEST):
+        """
+        Initialize the Target app reviews scraper
+        
+        Args:
+            app_id (str): The app id from Google Play Store (default: 'com.target.ui')
+            language (str): Language code (default: 'en_IN')
+            country (str): Country code (default: 'us')
+            min_delay (float): Minimum delay between requests in seconds
+            max_delay (float): Maximum delay between requests in seconds
+            sort_method (Sort): Sorting method for reviews (NEWEST, RATING, RELEVANCE)
+        """
+        self.app_id = app_id
+        self.language = language
+        self.country = country
+        self.min_delay = min_delay
+        self.max_delay = max_delay
+        self.sort_method = sort_method
+        self.reviews = []
+        self.app_info = None
+        
+        # Create a UserAgent for rotation
+        try:
+            self.ua = UserAgent()
+            self.use_fake_ua = True
+            logger.info("Using fake-useragent for request headers")
+        except:
+            self.use_fake_ua = False
+            logger.warning("fake-useragent not available, using static user agents")
+            # Fallback user agents
+            self.user_agents = [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15",
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:90.0) Gecko/20100101 Firefox/90.0",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.159 Safari/537.36 Edg/92.0.902.84",
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Mobile/15E148 Safari/604.1"
+            ]
+    
+    def _get_random_user_agent(self):
+        """Get a random user agent for request headers"""
+        if self.use_fake_ua:
+            return self.ua.random
+        else:
+            return random.choice(self.user_agents)
+    
+    def _random_delay(self, first_request=False):
+        """
+        Add humanlike random delay between requests
+        
+        Args:
+            first_request (bool): If True, adds a shorter initial delay
+        """
+        if first_request:
+            # Shorter delay for first request (appears more natural)
+            delay = random.uniform(0.5, 1.5)
+        else:
+            # Add jitter to delay timing
+            jitter = random.uniform(-0.5, 0.5)
+            delay = random.uniform(self.min_delay, self.max_delay) + jitter
+            
+        logger.debug(f"Waiting {delay:.2f} seconds")
+        time.sleep(delay)
+        
+    def get_app_info(self):
+        """
+        Get Target app information from Google Play Store
+        
+        Returns:
+            dict: App information
+        """
+        try:
+            logger.info(f"Fetching app information for {self.app_id}...")
+            self._random_delay(first_request=True)
+            
+            self.app_info = app(
+                self.app_id,
+                lang=self.language,
+                country=self.country
+            )
+            return self.app_info
+        except Exception as e:
+            logger.error(f"Error fetching app information: {e}")
+            return None
+    
+    def _clean_review_data(self, review_data):
+        """
+        Clean review data and remove unwanted fields
+        
+        Args:
+            review_data (dict): Original review data
+            
+        Returns:
+            dict: Cleaned review data
+        """
+        # Make a copy to avoid modifying the original
+        cleaned = review_data.copy()
+        
+        # Remove specified fields
+        fields_to_remove = ['userImage', 'replyContent', 'repliedAt', 'appVersion']
+        for field in fields_to_remove:
+            if field in cleaned:
+                del cleaned[field]
+                
+        return cleaned
+    
+    def scrape_all_reviews(self, max_reviews=None, save_to_csv=True, save_to_excel=True, 
+                          filename_prefix="target_all_reviews", print_first=True,
+                          batch_size=100, save_interval=500):
+        """
+        Scrape ALL Best Buy app reviews with anti-detection measures
+        
+        Args:
+            max_reviews (int): Maximum number of reviews to collect (None for all available)
+            save_to_csv (bool): Whether to save results to CSV
+            save_to_excel (bool): Whether to save results to Excel
+            filename_prefix (str): Prefix for output files
+            print_first (bool): Whether to print the first review
+            batch_size (int): Number of reviews per request
+            save_interval (int): Save data after collecting this many new reviews
+            
+        Returns:
+            pd.DataFrame: DataFrame containing all the reviews
+        """
+        if max_reviews is None:
+            logger.info(f"Starting to scrape ALL available reviews for {self.app_id}...")
+            max_reviews = float('inf')  # Set to infinity if no limit
+        else:
+            logger.info(f"Starting to scrape up to {max_reviews} reviews for {self.app_id}...")
+        
+        self.reviews = []
+        batches = 0
+        
+        # Define timestamp for filenames
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        csv_filename = f"{filename_prefix}_{timestamp}.csv"
+        excel_filename = f"{filename_prefix}_{timestamp}.xlsx"
+        
+        try:
+            # First batch with variable size for more human-like behavior
+            first_batch_size = min(random.randint(20, 40), max_reviews, batch_size)
+            
+            logger.info(f"Fetching first batch of {first_batch_size} reviews...")
+            result, continuation_token = reviews(
+                self.app_id,
+                lang=self.language,
+                country=self.country,
+                sort=self.sort_method,
+                count=first_batch_size
+            )
+            batches += 1
+            
+            # Clean and add the first batch of reviews
+            cleaned_results = [self._clean_review_data(review) for review in result]
+            self.reviews.extend(cleaned_results)
+            
+            # Print the first review if requested
+            if print_first and cleaned_results:
+                print("\nFirst review sample:")
+                print(cleaned_results[0])
+                print("\nContinuing to scrape all reviews...\n")
+            
+            # Create progress bar (will update dynamically)
+            pbar = tqdm(desc="Scraping reviews", unit="reviews")
+            pbar.update(len(self.reviews))
+            
+            # Continue fetching if we need more reviews and have a continuation token
+            last_save_count = 0
+            
+            while continuation_token and len(self.reviews) < max_reviews:
+                # Add randomized delay with some jitter to appear more human-like
+                self._random_delay()
+                
+                # Calculate how many more reviews we need
+                remaining = max_reviews - len(self.reviews)
+                
+                # Vary batch size slightly for more human-like behavior
+                current_batch_size = min(remaining, random.randint(batch_size-20, batch_size+20))
+                
+                try:
+                    # Get the next batch with a random user agent
+                    batch, continuation_token = reviews(
+                        self.app_id,
+                        continuation_token=continuation_token,
+                        count=current_batch_size
+                    )
+                    batches += 1
+                    
+                    # If no more reviews are available, break the loop
+                    if not batch:
+                        logger.info("No more reviews available")
+                        break
+                    
+                    # Clean and add the batch to our collection
+                    cleaned_batch = [self._clean_review_data(review) for review in batch]
+                    self.reviews.extend(cleaned_batch)
+                    
+                    # Update progress bar
+                    pbar.update(len(cleaned_batch))
+                    
+                    # Periodic status update (not every batch to avoid spamming logs)
+                    if batches % 5 == 0:
+                        logger.info(f"Collected {len(self.reviews)} reviews so far in {batches} batches")
+                    
+                    # Save at intervals to prevent data loss in case of interruption
+                    if len(self.reviews) - last_save_count >= save_interval:
+                        temp_df = pd.DataFrame(self.reviews)
+                        if save_to_csv:
+                            temp_df.to_csv(f"temp_{csv_filename}", index=False, encoding='utf-8')
+                        logger.info(f"Saved {len(self.reviews)} reviews to temporary file")
+                        last_save_count = len(self.reviews)
+                    
+                except Exception as e:
+                    logger.error(f"Error fetching batch {batches}: {e}")
+                    # Add a longer, randomized delay after an error
+                    error_delay = random.uniform(10, 15)
+                    logger.info(f"Waiting {error_delay:.2f} seconds before retrying...")
+                    time.sleep(error_delay)
+                    
+                    # If we've had too many consecutive errors, take a longer break
+                    if batches % 20 == 0 and batches > 0:
+                        long_delay = random.uniform(60, 120)
+                        logger.info(f"Taking a longer {long_delay:.0f} second break to avoid rate limits...")
+                        time.sleep(long_delay)
+                
+            pbar.close()
+            logger.info(f"Finished scraping {len(self.reviews)} reviews in {batches} batches")
+            
+            # Convert to DataFrame
+            if not self.reviews:
+                logger.warning("No reviews collected")
+                return pd.DataFrame()
+                
+            df = pd.DataFrame(self.reviews)
+            
+            # Save results
+            if save_to_csv and not df.empty:
+                df.to_csv(csv_filename, index=False, encoding='utf-8')
+                logger.info(f"Saved {len(df)} reviews to {csv_filename}")
+            
+            if save_to_excel and not df.empty:
+                # Export to Excel without any formatting, just raw data
+                df.to_excel(excel_filename, index=False, engine='xlsxwriter')
+                logger.info(f"Saved {len(df)} reviews to {excel_filename}")
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error during review scraping: {e}")
+            
+            # Return whatever we've collected so far
+            if self.reviews:
+                df = pd.DataFrame(self.reviews)
+                # Try to save if we have data
+                if save_to_csv:
+                    recovery_file = f"recovery_{csv_filename}"
+                    df.to_csv(recovery_file, index=False, encoding='utf-8')
+                    logger.info(f"Saved {len(df)} reviews to recovery file {recovery_file}")
+                return df
+            return pd.DataFrame()
+
+# Main function to run the scraper with a focus on raw data collection
+def scrape_all_bestbuy_reviews(max_reviews=None, 
+                              filename_prefix="target_all_reviews",
+                              min_delay=2.0, 
+                              max_delay=5.0,
+                              sort_by=Sort.NEWEST):
+    """
+    Scrape all Target app reviews
+    
+    Args:
+        max_reviews (int): Maximum number of reviews to collect (None for all)
+        filename_prefix (str): Prefix for output files
+        min_delay (float): Minimum delay between requests
+        max_delay (float): Maximum delay between requests
+        sort_by (Sort): Sort method (NEWEST, RATING, RELEVANCE)
+        
+    Returns:
+        pd.DataFrame: DataFrame with raw review data
+    """
+    print(f"Starting Best Buy app review scraper (App ID: com.target.ui)")
+    if max_reviews:
+        print(f"Will collect up to {max_reviews} reviews")
+    else:
+        print("Will attempt to collect ALL available reviews (this may take a long time)")
+    
+    # Create the scraper with enhanced anti-detection settings
+    scraper = BestBuyRawReviewsScraper(
+        app_id="com.target.ui",
+        min_delay=min_delay,
+        max_delay=max_delay,
+        sort_method=sort_by
+    )
+    
+    # Get app info
+    app_info = scraper.get_app_info()
+    if app_info:
+        print(f"\n===== Best Buy App Information =====")
+        print(f"App: {app_info.get('title', 'target')}")
+        print(f"Developer: {app_info.get('developer', 'target, Inc.')}")
+        print(f"Current Rating: {app_info.get('score', 'N/A')}")
+        print(f"Total Ratings: {app_info.get('ratings', 'N/A'):,}")
+        print(f"Installs: {app_info.get('installs', 'N/A')}")
+        print(f"Version: {app_info.get('version', 'N/A')}")
+        print(f"Last Updated: {app_info.get('updated', 'N/A')}")
+        print(f"Category: {app_info.get('genre', 'N/A')}")
+        print(f"==================================")
+        
+        # Estimate total available reviews (useful for planning)
+        estimated_total = app_info.get('ratings', 0)
+        print(f"\nEstimated total reviews available: {estimated_total:,}")
+        
+        if max_reviews is None:
+            estimated_time_hours = estimated_total * ((min_delay + max_delay) / 2) / 3600 / 100
+            print(f"Estimated time to scrape ALL reviews: {estimated_time_hours:.1f} hours (at 100 reviews per request)")
+            print("You can stop the scraper at any time - data will be saved at regular intervals")
+    
+    # Scrape all reviews with focus on raw data
+    reviews_df = scraper.scrape_all_reviews(
+        max_reviews=max_reviews, 
+        save_to_csv=True,
+        save_to_excel=True,
+        filename_prefix=filename_prefix,
+        print_first=True,
+        batch_size=100,  # Standard batch size
+        save_interval=500  # Save every 500 reviews
+    )
+    
+    if not reviews_df.empty:
+        print(f"\nSuccessfully scraped {len(reviews_df):,} reviews")
+        print(f"\nData has been saved to CSV and Excel files with prefix: {filename_prefix}")
+        
+        # Show basic stats without analysis
+        print(f"\nBasic statistics:")
+        print(f"- Total reviews collected: {len(reviews_df):,}")
+        print(f"- Average rating: {reviews_df['score'].mean():.2f} stars")
+        print(f"- Date range: {reviews_df['at'].min()} to {reviews_df['at'].max()}")
+        
+        return reviews_df
+    else:
+        print("Failed to retrieve reviews")
+        return pd.DataFrame()
+
+# Example usage - simplest way to run the scraper
+# Uncomment ONE of these lines to start scraping:
+
+# Option 1: Scrape ALL available reviews (may take many hours)
+# reviews_df = scrape_all_bestbuy_reviews()
+
+# Option 2: Scrape a limited number of reviews (for testing)
+reviews_df = scrape_all_bestbuy_reviews(max_reviews=1000000)
+
+# Option 3: Scrape with custom settings
+# reviews_df = scrape_all_bestbuy_reviews(
+#     max_reviews=5000,
+#     filename_prefix="bestbuy_complete",
+#     min_delay=3.0,  # More conservative delays
+#     max_delay=7.0,  # More conservative delays
+#     sort_by=Sort.NEWEST
+# )

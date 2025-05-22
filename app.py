@@ -11,6 +11,9 @@ from datetime import datetime
 from utils.data_processor import process_excel_file, export_knowledge_base
 # Import Anthropic helper functions (Claude-only version)
 from utils.anthropic_helper import analyze_review, generate_category_summary
+# Import scraper functions
+from utils.google_play_scraper import scrape_google_play_reviews
+from utils.trustpilot_scraper import scrape_trustpilot_reviews
 
 # Set page configuration
 st.set_page_config(
@@ -30,22 +33,30 @@ if 'knowledge_base' not in st.session_state:
     st.session_state.knowledge_base = {}
 if 'anthropic_api_key' not in st.session_state:
     st.session_state.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+if 'scraped_data' not in st.session_state:
+    st.session_state.scraped_data = None
+if 'data_source_method' not in st.session_state:
+    st.session_state.data_source_method = None  # 'scrape' or 'upload'
+if 'scraping_in_progress' not in st.session_state:
+    st.session_state.scraping_in_progress = False
+if 'scraping_completed' not in st.session_state:
+    st.session_state.scraping_completed = False
 
 # Main app header
-st.title("Sentiment Analysis & Knowledge Base Creator")
-st.markdown("Upload user reviews to analyze sentiment, categorize issues, and build a knowledge base")
+st.title("🚀 Sentiment Analysis & Knowledge Base Creator")
+st.markdown("**Get data from various sources or upload existing data to analyze sentiment, categorize issues, and build a comprehensive knowledge base**")
 
-# Sidebar for configurations and filters
+# Sidebar for configurations
 with st.sidebar:
-    st.header("Configuration")
+    st.header("⚙️ Configuration")
     
     # Anthropic API Key input
-    anthropic_key = st.text_input("Anthropic API Key", value=st.session_state.anthropic_api_key, type="password")
+    anthropic_key = st.text_input("🔑 Anthropic API Key", value=st.session_state.anthropic_api_key, type="password")
     if anthropic_key != st.session_state.anthropic_api_key:
         st.session_state.anthropic_api_key = anthropic_key
         os.environ["ANTHROPIC_API_KEY"] = anthropic_key
     
-    st.info("Anthropic Claude is a powerful AI that can analyze your reviews and provide detailed insights.")
+    st.info("💡 Anthropic Claude will analyze your reviews and provide detailed insights including emotions and urgency levels.")
     
     st.markdown("---")
     
