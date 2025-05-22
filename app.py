@@ -43,10 +43,24 @@ if 'scraping_completed' not in st.session_state:
     st.session_state.scraping_completed = False
 if 'current_tab' not in st.session_state:
     st.session_state.current_tab = "data_sourcing"  # Track which tab is active
+if 'error_placeholder' not in st.session_state:
+    st.session_state.error_placeholder = None  # Single placeholder for all errors
 
 # Main app header
 st.title("🚀 Sentiment Analysis & Knowledge Base Creator")
 st.markdown("**Get data from various sources or upload existing data to analyze sentiment, categorize issues, and build a comprehensive knowledge base**")
+
+# Create a centralized error placeholder (only created once)
+if st.session_state.error_placeholder is None:
+    st.session_state.error_placeholder = st.empty()
+
+# Function to display errors in the centralized placeholder
+def show_error(error_message):
+    """Display error message in the centralized error placeholder"""
+    if error_message:
+        st.session_state.error_placeholder.error(f"❌ {error_message}")
+    else:
+        st.session_state.error_placeholder.empty()
 
 # Sidebar for configurations
 with st.sidebar:
@@ -388,30 +402,35 @@ with main_tab1:
                     # Provide download option
                     st.markdown("### 📥 Download Scraped Data")
                     
-                    # Convert to Excel for download
-                    output = io.BytesIO()
-                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                        combined_data.to_excel(writer, index=False, sheet_name='Scraped_Reviews')
-                    
-                    st.download_button(
-                        label="📥 Download Excel File",
-                        data=output.getvalue(),
-                        file_name=f"scraped_reviews_{main_company['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        type="primary"
-                    )
+                    # Convert to Excel for download - using proper error handling
+                    try:
+                        output = io.BytesIO()
+                        combined_data.to_excel(output, engine='xlsxwriter', index=False, sheet_name='Scraped_Reviews')
+                        
+                        # Download button
+                        st.download_button(
+                            label="📥 Download Excel File",
+                            data=output.getvalue(),
+                            file_name=f"scraped_reviews_{main_company['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            type="primary",
+                            key="scraped_download_btn"
+                        )
+                    except Exception as e:
+                        show_error(f"Error creating Excel file: {str(e)}")
                     
                     # Display a clear message that the data is available for analysis
                     st.markdown("---")
                     st.markdown("### 🔍 Analyze Your Scraped Data")
                     st.info("The scraped data has been stored and is ready for analysis. Click the button below to analyze it using Anthropic Claude for sentiment analysis, categorization, and knowledge base creation.")
                     
-                    # Show analyze button
-                    if st.button("🔍 Start Analysis", type="primary", use_container_width=True):
+                    # Show analyze button with a unique key to avoid duplicate widgets
+                    if st.button("🔍 Analyze Scraped Data", key="scraped_analyze_btn", type="primary", use_container_width=True):
                         # Check if Anthropic API key is available
                         if not st.session_state.anthropic_api_key:
-                            st.error("❌ Please enter your Anthropic API key in the sidebar before analyzing.")
+                            show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
                         else:
+                            show_error("")  # Clear any previous errors
                             # Switch to analysis tab and ensure data is preserved
                             st.session_state.current_tab = "analysis"
                             # Make sure the data is available for analysis
@@ -479,12 +498,13 @@ with main_tab1:
                         st.markdown("### 👀 Data Preview")
                         st.dataframe(df.head(), use_container_width=True)
                         
-                        # Show analyze button
-                        if st.button("🔍 Analyze Uploaded Data", type="primary", use_container_width=True):
+                        # Show analyze button with unique key to avoid duplicate widget errors
+                        if st.button("🔍 Analyze Uploaded Data", key="upload_analyze_btn", type="primary", use_container_width=True):
                             # Check if Anthropic API key is available
                             if not st.session_state.anthropic_api_key:
-                                st.error("❌ Please enter your Anthropic API key in the sidebar before analyzing.")
+                                show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
                             else:
+                                show_error("")  # Clear any previous errors
                                 # Switch to analysis tab
                                 st.session_state.current_tab = "analysis"
                                 st.success("🚀 Starting analysis of uploaded data...")
@@ -505,7 +525,7 @@ with main_tab1:
                                 st.rerun()
                     
                 except Exception as e:
-                    st.error(f"❌ Error processing file: {str(e)}")
+                    show_error(f"Error processing file: {str(e)}")
         
         # Tab 2: Sample File Format
         with upload_tab2:
@@ -568,11 +588,16 @@ with main_tab1:
 with main_tab2:
     st.header("📊 Analysis Results")
     
-    if st.session_state.df is not None and st.session_state.anthropic_api_key:
+    if st.session_state.df is not None:
         # Check if data has been analyzed already
         if st.session_state.analyzed_data is None:
+            # First check if Anthropic API key is available
+            if not st.session_state.anthropic_api_key:
+                show_error("Anthropic API key is required for analysis. Please enter it in the sidebar.")
             # Button to start analysis
-            if st.button("🔍 Start Analysis", type="primary", use_container_width=True):
+            elif st.button("🔍 Start Analysis", key="start_analysis_btn", type="primary", use_container_width=True):
+                # Clear any previous errors
+                show_error("")
                 with st.spinner("Analyzing reviews. This may take a few minutes..."):
                     # Create progress bar
                     progress_bar = st.progress(0)
