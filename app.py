@@ -256,11 +256,9 @@ with main_tab1:
             submitted = st.form_submit_button("🚀 Start Data Collection", type="primary", use_container_width=True)
             
             if submitted:
-                # Validate required fields
+                # Validate required fields (NO API KEY REQUIRED FOR SCRAPING)
                 if not all([main_company, google_app_id, trustpilot_url]):
                     st.error("❌ Please fill in all required main company fields (marked with *)")
-                elif not st.session_state.anthropic_api_key:
-                    st.error("❌ Please enter your Anthropic API key in the sidebar before starting data collection")
                 else:
                     st.session_state.scraping_in_progress = True
                     
