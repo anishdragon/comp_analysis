@@ -294,8 +294,10 @@ with main_tab1:
                             'name': main_company,
                             'google_id': google_app_id,
                             'trustpilot_url': trustpilot_url,
+                            'ecommerce_url': ecommerce_url,
                             'google_count': google_review_count,
-                            'trustpilot_count': trustpilot_review_count
+                            'trustpilot_count': trustpilot_review_count,
+                            'ecommerce_count': ecommerce_product_count
                         },
                         'competitors': competitors_data
                     }
@@ -309,13 +311,18 @@ with main_tab1:
             # Progress containers for each source
             google_progress = st.container()
             trustpilot_progress = st.container()
+            ecommerce_progress = st.container()
             
             # Overall progress
             overall_progress = st.progress(0)
             overall_status = st.empty()
             
             all_scraped_data = []
-            total_sources = 2  # Google Play + Trustpilot for main company
+            # Count sources: Google Play + Trustpilot + E-commerce (if URL provided)
+            config = st.session_state.scraping_config
+            total_sources = 2  # Google Play + Trustpilot
+            if config['main_company'].get('ecommerce_url'):
+                total_sources += 1
             completed_sources = 0
             
             try:
@@ -355,6 +362,24 @@ with main_tab1:
                 
                 completed_sources += 1
                 overall_progress.progress(completed_sources / total_sources)
+                
+                # Scrape E-commerce reviews if URL provided
+                if main_company.get('ecommerce_url'):
+                    with overall_status:
+                        st.info("🛒 Starting E-commerce website data collection...")
+                    
+                    ecommerce_data = scrape_ecommerce_reviews(
+                        website_url=main_company['ecommerce_url'],
+                        max_products=main_company['ecommerce_count'],
+                        company_name=main_company['name'],
+                        progress_container=ecommerce_progress
+                    )
+                    
+                    if not ecommerce_data.empty:
+                        all_scraped_data.append(ecommerce_data)
+                    
+                    completed_sources += 1
+                    overall_progress.progress(completed_sources / total_sources)
                 
                 # Process competitors if any
                 for i, competitor in enumerate(config['competitors']):
