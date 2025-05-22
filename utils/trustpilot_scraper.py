@@ -197,7 +197,9 @@ class TrustpilotScraper:
                             review_data['review_content'] = review_data.get('content', '')
                             review_data['review_title'] = review_data.get('title', '')
                             review_data['username'] = review_data.get('reviewer', '')
-                            review_data['datetime'] = review_data.get('date', '')
+                            # Convert datetime to string to avoid Arrow serialization issues
+                            date_value = review_data.get('date', '')
+                            review_data['datetime'] = str(date_value) if date_value else ''
                             
                             page_reviews.append(review_data)
                     
