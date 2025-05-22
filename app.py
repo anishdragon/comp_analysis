@@ -1050,7 +1050,8 @@ with main_tab3:
         # Time Series Analysis (if datetime available)
         if 'datetime' in analyzed_df.columns and not analyzed_df['datetime'].isna().all():
             st.subheader("Sentiment Trends Over Time")
-            analyzed_df['datetime'] = pd.to_datetime(analyzed_df['datetime'])
+            # Handle timezone conflicts by converting all to timezone-naive
+            analyzed_df['datetime'] = pd.to_datetime(analyzed_df['datetime'], utc=True).dt.tz_convert(None)
             analyzed_df['date'] = analyzed_df['datetime'].dt.date
             
             sentiment_time = analyzed_df.groupby(['date', 'sentiment']).size().reset_index(name='count')
