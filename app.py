@@ -614,7 +614,38 @@ with main_tab1:
 with main_tab2:
     st.header("📊 Analysis Results")
     
+    # Check if we have either uploaded data or scraped data available
+    available_data = None
     if st.session_state.df is not None:
+        available_data = st.session_state.df
+    elif st.session_state.scraped_data is not None:
+        available_data = st.session_state.scraped_data
+        # Copy scraped data to main df for analysis
+        st.session_state.df = st.session_state.scraped_data
+    
+    if available_data is not None:
+        # Show data summary at the top
+        st.markdown("### 📋 Available Data for Analysis")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Reviews", len(available_data))
+        with col2:
+            if 'company' in available_data.columns:
+                st.metric("Companies", available_data['company'].nunique())
+            else:
+                st.metric("Companies", "N/A")
+        with col3:
+            if 'source' in available_data.columns:
+                st.metric("Sources", available_data['source'].nunique())
+            else:
+                st.metric("Sources", "N/A")
+        
+        # Show data preview
+        with st.expander("👀 Preview Your Data", expanded=False):
+            st.dataframe(available_data.head(10), use_container_width=True)
+        
+        st.markdown("---")
+        
         # Check if data has been analyzed already
         if st.session_state.analyzed_data is None:
             # First check if Anthropic API key is available
