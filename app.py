@@ -444,35 +444,48 @@ with main_tab1:
                     except Exception as e:
                         show_error(f"Error creating Excel file: {str(e)}")
                     
-                    # Display a clear message that the data is available for analysis
+                    # Display next steps with side-by-side buttons
                     st.markdown("---")
-                    st.markdown("### 🔍 Analyze Your Scraped Data")
-                    st.info("The scraped data has been stored and is ready for analysis. Click the button below to analyze it using Anthropic Claude for sentiment analysis, categorization, and knowledge base creation.")
+                    st.markdown("### 📊 What's Next?")
+                    st.info("Your data has been successfully collected! You can download it or proceed to analysis.")
                     
-                    # Show analyze button with a unique key to avoid duplicate widgets
-                    if st.button("🔍 Analyze Scraped Data", key="scraped_analyze_btn", type="primary", use_container_width=True):
-                        show_error("")  # Clear any previous errors
-                        # Switch to analysis tab and ensure data is preserved
-                        st.session_state.current_tab = "analysis"
-                        # Make sure the data is available for analysis
-                        if st.session_state.df is None and st.session_state.scraped_data is not None:
-                            st.session_state.df = st.session_state.scraped_data
-                        st.success("🚀 Switching to analysis tab with your scraped data...")
-                        # Use js to click the Analysis Results tab
-                        js = f"""
-                        <script>
-                            function sleep(ms) {{
-                                return new Promise(resolve => setTimeout(resolve, ms));
-                            }}
-                            async function clickTab() {{
-                                await sleep(100);
-                                document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
-                            }}
-                            clickTab();
-                        </script>
-                        """
-                        st.markdown(js, unsafe_allow_html=True)
-                        st.rerun()
+                    # Create two columns for side-by-side buttons
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Download button (no routing change)
+                        if 'download_clicked' not in st.session_state:
+                            st.session_state.download_clicked = False
+                        
+                        if st.button("📥 Download Excel", key="download_excel_btn", use_container_width=True):
+                            st.session_state.download_clicked = True
+                            st.success("✅ Download completed! You can still proceed to analysis.")
+                    
+                    with col2:
+                        # Next button (routes to Analysis tab)
+                        if st.button("➡️ Next", key="next_to_analysis_btn", type="primary", use_container_width=True):
+                            show_error("")  # Clear any previous errors
+                            # Switch to analysis tab and ensure data is preserved
+                            st.session_state.current_tab = "analysis"
+                            # Make sure the data is available for analysis
+                            if st.session_state.df is None and st.session_state.scraped_data is not None:
+                                st.session_state.df = st.session_state.scraped_data
+                            st.success("🚀 Moving to Analysis tab...")
+                            # Use js to click the Analysis Results tab
+                            js = f"""
+                            <script>
+                                function sleep(ms) {{
+                                    return new Promise(resolve => setTimeout(resolve, ms));
+                                }}
+                                async function clickTab() {{
+                                    await sleep(100);
+                                    document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
+                                }}
+                                clickTab();
+                            </script>
+                            """
+                            st.markdown(js, unsafe_allow_html=True)
+                            st.rerun()
                 
                 else:
                     with overall_status:
