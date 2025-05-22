@@ -965,11 +965,14 @@ with main_tab2:
         if 'datetime' in analyzed_df.columns and not analyzed_df['datetime'].isna().all():
             st.subheader("Sentiment Over Time")
             
-            # Convert to datetime if not already
-            analyzed_df['datetime'] = pd.to_datetime(analyzed_df['datetime'])
-            
-            # Group by date and sentiment
-            analyzed_df['date'] = analyzed_df['datetime'].dt.date
+            # Convert to datetime if not already (handle mixed formats safely)
+            try:
+                analyzed_df['datetime'] = pd.to_datetime(analyzed_df['datetime'], errors='coerce')
+                # Group by date and sentiment
+                analyzed_df['date'] = analyzed_df['datetime'].dt.date
+            except:
+                # If datetime conversion fails, create a simple date column
+                analyzed_df['date'] = pd.to_datetime('today').date()
             sentiment_time = analyzed_df.groupby(['date', 'sentiment']).size().reset_index(name='count')
             
             # Pivot for visualization
