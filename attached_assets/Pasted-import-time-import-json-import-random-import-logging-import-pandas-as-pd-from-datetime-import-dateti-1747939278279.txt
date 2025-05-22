@@ -1,0 +1,1152 @@
+import time
+import json
+import random
+import logging
+import pandas as pd
+from datetime import datetime
+from fake_useragent import UserAgent
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException, StaleElementReferenceException
+import concurrent.futures
+import re
+import os
+import pickle
+import urllib.parse
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, Alignment, PatternFill
+from openpyxl.utils import get_column_letter
+import requests
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse, parse_qs
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("target_scraper.log"),
+        logging.StreamHandler()
+    ]
+)
+
+class TargetScraper:
+    def __init__(self, 
+                 max_products=100, 
+                 output_file=None,
+                 temp_save_interval=10,
+                 max_reviews_per_product=20,
+                 max_workers=4):
+        """
+        Initialize the Target scraper with configuration settings.
+        
+        Args:
+            max_products (int): Maximum number of products to scrape
+            output_file (str): Output Excel file name
+            temp_save_interval (int): How often to save intermediate results (every N products)
+            max_reviews_per_product (int): Maximum number of reviews to scrape per product
+            max_workers (int): Maximum number of concurrent worker threads
+        """
+        self.max_products = max_products
+        self.output_file = output_file or f"target_products_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        self.temp_save_interval = temp_save_interval
+        self.max_reviews_per_product = max_reviews_per_product
+        self.max_workers = max_workers
+        
+        # State management
+        self.driver = None
+        self.session = None
+        self.user_agent = UserAgent()
+        self.products = []
+        self.popular_categories = [
+            {"name": "Electronics", "url": "https://www.target.com/c/electronics/-/N-5xtg6"},
+            {"name": "Home", "url": "https://www.target.com/c/home/-/N-5xtvd"},
+            {"name": "Kitchen & Dining", "url": "https://www.target.com/c/kitchen-dining/-/N-hz89j"},
+            {"name": "Furniture", "url": "https://www.target.com/c/furniture/-/N-5xtqu"},
+            {"name": "Clothing", "url": "https://www.target.com/c/clothing/-/N-5xtcn"},
+            {"name": "Toys", "url": "https://www.target.com/c/toys/-/N-5xtb0"},
+            {"name": "Beauty", "url": "https://www.target.com/c/beauty/-/N-55r1x"},
+            {"name": "Sports & Outdoors", "url": "https://www.target.com/c/sports-outdoors/-/N-5xt85"}
+        ]
+        self.popular_search_terms = [
+            "coffee maker", "headphones", "bluetooth speaker", "laptop", 
+            "smartphone", "tablet", "tv", "vacuum cleaner", "blender", 
+            "air fryer", "instant pot", "kitchen appliance"
+        ]
+        self.base_url = "https://www.target.com"
+        self.api_base = "https://redsky.target.com"
+        self.visited_urls = set()
+        self.product_urls = set()
+        self.temp_file = "target_scraper_temp.pkl"
+        
+        # Headers for direct API calls
+        self.default_headers = {
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "Pragma": "no-cache",
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-site",
+        }
+        
+        # Try to load previous state if exists
+        self._load_temp_state()
+        
+        # Setup
+        self._setup_session()
+        self._setup_driver()
+        
+    def _setup_session(self):
+        """Set up the requests session with rotating user agents"""
+        self.session = requests.Session()
+        
+        # Update with default headers
+        self.session.headers.update(self.default_headers)
+        self._rotate_user_agent()
+    
+    def _setup_driver(self):
+        """Set up the Selenium WebDriver with advanced anti-detection measures"""
+        try:
+            chrome_options = Options()
+            
+            # Always run in headless mode
+            chrome_options.add_argument("--headless=new")
+            
+            # Enhanced anti-detection measures
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-extensions")
+            chrome_options.add_argument("--disable-dev-tools")
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--allow-running-insecure-content")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            chrome_options.add_argument("--disable-field-trial-config")
+            chrome_options.add_argument("--disable-back-forward-cache")
+            chrome_options.add_argument("--disable-background-networking")
+            chrome_options.add_argument("--disable-default-apps")
+            chrome_options.add_argument("--disable-hang-monitor")
+            chrome_options.add_argument("--disable-prompt-on-repost")
+            chrome_options.add_argument("--disable-sync")
+            chrome_options.add_argument("--metrics-recording-only")
+            chrome_options.add_argument("--no-first-run")
+            chrome_options.add_argument("--safebrowsing-disable-auto-update")
+            chrome_options.add_argument("--enable-automation")
+            chrome_options.add_argument("--password-store=basic")
+            chrome_options.add_argument("--use-mock-keychain")
+            
+            # Randomize window size
+            window_sizes = [
+                "--window-size=1920,1080", "--window-size=1366,768", 
+                "--window-size=1440,900", "--window-size=1536,864",
+                "--window-size=1280,720", "--window-size=1600,900"
+            ]
+            chrome_options.add_argument(random.choice(window_sizes))
+            
+            # Random user agent
+            chrome_options.add_argument(f"user-agent={self.user_agent.random}")
+            
+            # Advanced experimental options for stealth
+            chrome_options.add_experimental_option("excludeSwitches", [
+                "enable-automation", "enable-logging", "disable-hang-monitor", 
+                "disable-prompt-on-repost", "disable-background-networking",
+                "disable-sync", "disable-translate", "disable-web-resources",
+                "disable-client-side-phishing-detection"
+            ])
+            chrome_options.add_experimental_option("useAutomationExtension", False)
+            
+            # Additional preferences for stealth
+            prefs = {
+                "profile.default_content_setting_values": {
+                    "notifications": 2,
+                    "geolocation": 2,
+                    "media_stream": 2,
+                },
+                "profile.default_content_settings.popups": 0,
+                "profile.managed_default_content_settings.images": 2,
+                "profile.password_manager_enabled": False,
+                "credentials_enable_service": False,
+            }
+            chrome_options.add_experimental_option("prefs", prefs)
+            
+            # Use system chromium and chromedriver
+            chrome_options.binary_location = "/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium"
+            
+            # Initialize driver with system chromedriver
+            from selenium.webdriver.chrome.service import Service
+            service = Service("/nix/store/3qnxr5x6gw3k9a9i7d0akz0m6bksbwff-chromedriver-125.0.6422.141/bin/chromedriver")
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+            
+            # Advanced anti-detection JavaScript execution
+            stealth_js = """
+                // Remove webdriver property
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                
+                // Override the plugins property to use a custom getter
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5]
+                });
+                
+                // Override the languages property to use a custom getter
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en']
+                });
+                
+                // Override the chrome property to use a custom getter
+                Object.defineProperty(window, 'chrome', {
+                    get: () => ({
+                        runtime: {},
+                        // etc.
+                    })
+                });
+                
+                // Override the permission query
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+                
+                // Randomize screen properties
+                Object.defineProperties(screen, {
+                    width: { get: () => Math.floor(Math.random() * 400) + 1200 },
+                    height: { get: () => Math.floor(Math.random() * 300) + 700 },
+                    availWidth: { get: () => Math.floor(Math.random() * 400) + 1200 },
+                    availHeight: { get: () => Math.floor(Math.random() * 300) + 700 },
+                    colorDepth: { get: () => 24 },
+                    pixelDepth: { get: () => 24 }
+                });
+            """
+            
+            self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+                'source': stealth_js
+            })
+            
+            # Set random user agent via CDP
+            self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+                "userAgent": self.user_agent.random,
+                "acceptLanguage": "en-US,en;q=0.9",
+                "platform": "Win32"
+            })
+            
+            # Set random viewport
+            viewport_width = random.randint(1200, 1920)
+            viewport_height = random.randint(700, 1080)
+            self.driver.execute_cdp_cmd('Emulation.setDeviceMetricsOverride', {
+                'width': viewport_width,
+                'height': viewport_height,
+                'deviceScaleFactor': 1,
+                'mobile': False
+            })
+            
+            # Set a default implicit wait time with randomization
+            wait_time = random.randint(8, 12)
+            self.driver.implicitly_wait(wait_time)
+            
+            logging.info("Enhanced Selenium WebDriver with advanced stealth features initialized successfully")
+        except Exception as e:
+            logging.error(f"Failed to initialize Selenium WebDriver: {str(e)}")
+            raise
+    
+    def _rotate_user_agent(self):
+        """Update the session and driver with a new random user agent"""
+        ua = self.user_agent.random
+        self.session.headers.update({"User-Agent": ua})
+        
+        if self.driver:
+            try:
+                self.driver.execute_cdp_cmd('Network.setUserAgentOverride', {"userAgent": ua})
+            except Exception as e:
+                logging.warning(f"Failed to update WebDriver user agent: {str(e)}")
+        
+        return ua
+    
+    def _random_delay(self, min_factor=1.0):
+        """Add a random delay between requests to mimic human behavior"""
+        delay_range = (2, 5)  # Default delay range in seconds
+        min_delay, max_delay = delay_range
+        # Apply the minimum factor to ensure certain operations have longer delays
+        adjusted_min = min_delay * min_factor
+        adjusted_max = max_delay * min_factor
+        delay = random.uniform(adjusted_min, adjusted_max)
+        time.sleep(delay)
+        return delay
+    
+    def _save_temp_state(self):
+        """Save current state to temporary file to prevent data loss"""
+        try:
+            temp_data = {
+                'products': self.products,
+                'visited_urls': self.visited_urls,
+                'product_urls': self.product_urls
+            }
+            with open(self.temp_file, 'wb') as f:
+                pickle.dump(temp_data, f)
+            logging.info(f"Saved temporary state with {len(self.products)} products")
+        except Exception as e:
+            logging.error(f"Failed to save temporary state: {str(e)}")
+    
+    def _load_temp_state(self):
+        """Load previous state from temporary file if it exists"""
+        if os.path.exists(self.temp_file):
+            try:
+                with open(self.temp_file, 'rb') as f:
+                    temp_data = pickle.load(f)
+                self.products = temp_data.get('products', [])
+                self.visited_urls = temp_data.get('visited_urls', set())
+                self.product_urls = temp_data.get('product_urls', set())
+                logging.info(f"Loaded temporary state with {len(self.products)} products")
+                return True
+            except Exception as e:
+                logging.error(f"Failed to load temporary state: {str(e)}")
+        return False
+    
+    def _handle_popups(self):
+        """Handle common popups and overlays on Target website"""
+        try:
+            # Handle cookie consent
+            try:
+                cookie_button = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Accept') or contains(text(), 'accept')]"))
+                )
+                cookie_button.click()
+                self._random_delay()
+            except TimeoutException:
+                pass
+            
+            # Handle location popup
+            try:
+                location_close = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label, 'Close') or contains(@data-test, 'close')]"))
+                )
+                location_close.click()
+                self._random_delay()
+            except TimeoutException:
+                pass
+            
+            # Handle email signup popup
+            try:
+                email_close = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(@aria-label, 'close')]"))
+                )
+                email_close.click()
+                self._random_delay()
+            except TimeoutException:
+                pass
+            
+        except Exception as e:
+            logging.warning(f"Error handling popups: {str(e)}")
+    
+    def _extract_tcin_from_url(self, url):
+        """Extract the Target TCIN (product ID) from a product URL"""
+        # Extract TCIN from URL patterns like /p/A-12345678
+        tcin_match = re.search(r'/p/[A-Za-z\-]*(\d+)', url)
+        if tcin_match:
+            return tcin_match.group(1)
+        
+        # Extract from URL parameters like ?tcin=12345678
+        parsed_url = urlparse(url)
+        query_params = parse_qs(parsed_url.query)
+        if 'tcin' in query_params:
+            return query_params['tcin'][0]
+        
+        return None
+    
+    def _extract_product_urls_from_selenium(self):
+        """Extract product URLs directly from the current page using Selenium"""
+        product_links = []
+        
+        try:
+            # Wait for page to load
+            WebDriverWait(self.driver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            # Try multiple approaches to find product cards
+            product_card_selectors = [
+                "//div[contains(@data-test, 'product-card')]//a[contains(@href, '/p/')]",
+                "//a[contains(@data-test, 'product-title')]",
+                "//div[contains(@class, 'ProductCard')]//a[contains(@href, '/p/')]",
+                "//li[contains(@data-test, 'search-result')]//a[contains(@href, '/p/')]",
+                "//a[contains(@href, '/p/')]"
+            ]
+            
+            for selector in product_card_selectors:
+                try:
+                    product_elements = self.driver.find_elements(By.XPATH, selector)
+                    if product_elements:
+                        logging.info(f"Found {len(product_elements)} product links using selector: {selector}")
+                        
+                        for element in product_elements:
+                            try:
+                                href = element.get_attribute("href")
+                                if href and '/p/' in href and href not in self.visited_urls:
+                                    product_links.append(href)
+                            except StaleElementReferenceException:
+                                continue
+                            except Exception as e:
+                                logging.warning(f"Error extracting href: {str(e)}")
+                        
+                        if product_links:
+                            break
+                            
+                except Exception as e:
+                    logging.warning(f"Error with selector {selector}: {str(e)}")
+                    continue
+            
+            # Remove duplicates and filter valid URLs
+            unique_links = list(set(product_links))
+            valid_links = [link for link in unique_links if self._extract_tcin_from_url(link)]
+            
+            logging.info(f"Extracted {len(valid_links)} valid product URLs")
+            return valid_links
+            
+        except Exception as e:
+            logging.error(f"Error extracting product URLs: {str(e)}")
+            return []
+    
+    def _navigate_with_retry(self, url, max_retries=3):
+        """Navigate to URL with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                logging.info(f"Navigating to: {url} (attempt {attempt + 1})")
+                self.driver.get(url)
+                
+                # Wait for page to load
+                WebDriverWait(self.driver, 15).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "body"))
+                )
+                
+                # Handle popups
+                self._handle_popups()
+                
+                # Random delay to mimic human behavior
+                self._random_delay()
+                
+                return True
+                
+            except Exception as e:
+                logging.warning(f"Navigation attempt {attempt + 1} failed: {str(e)}")
+                if attempt < max_retries - 1:
+                    self._random_delay(2)  # Longer delay before retry
+                    self._rotate_user_agent()
+                else:
+                    logging.error(f"Failed to navigate to {url} after {max_retries} attempts")
+                    return False
+        
+        return False
+    
+    def _scrape_product_details(self, product_url):
+        """Scrape detailed product information from a product page"""
+        try:
+            logging.info(f"Scraping product: {product_url}")
+            
+            # Navigate to product page
+            if not self._navigate_with_retry(product_url):
+                return None
+            
+            # Wait for product content to load
+            WebDriverWait(self.driver, 15).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.XPATH, "//h1[contains(@data-test, 'product-title')]")),
+                    EC.presence_of_element_located((By.XPATH, "//h1[contains(@class, 'product-title')]")),
+                    EC.presence_of_element_located((By.TAG_NAME, "h1"))
+                )
+            )
+            
+            product_data = {
+                'url': product_url,
+                'tcin': self._extract_tcin_from_url(product_url),
+                'product_name': None,
+                'selling_price': None,
+                'discount_offered': None,
+                'discounted_price': None,
+                'specifications': None,
+                'ratings': None,
+                'review_count': None,
+                'reviews': [],
+                'sku_code': None,
+                'skus_available': [],
+                'scraped_at': datetime.now().isoformat()
+            }
+            
+            # Extract product name
+            try:
+                name_selectors = [
+                    "//h1[contains(@data-test, 'product-title')]",
+                    "//h1[contains(@class, 'product-title')]",
+                    "//h1",
+                    "//span[contains(@class, 'pdp-product-name')]"
+                ]
+                
+                for selector in name_selectors:
+                    try:
+                        name_element = self.driver.find_element(By.XPATH, selector)
+                        product_data['product_name'] = name_element.text.strip()
+                        break
+                    except NoSuchElementException:
+                        continue
+                        
+            except Exception as e:
+                logging.warning(f"Error extracting product name: {str(e)}")
+            
+            # Extract pricing information
+            try:
+                # Look for current price
+                price_selectors = [
+                    "//span[contains(@data-test, 'product-price')]",
+                    "//span[contains(@class, 'sr-only') and contains(text(), 'current price')]",
+                    "//span[contains(@class, 'current-price')]",
+                    "//div[contains(@data-test, 'price')]//span",
+                    "//span[text()[contains(., '$')]]"
+                ]
+                
+                for selector in price_selectors:
+                    try:
+                        price_elements = self.driver.find_elements(By.XPATH, selector)
+                        for price_element in price_elements:
+                            price_text = price_element.text.strip()
+                            if '$' in price_text and price_text != '':
+                                # Extract numeric price
+                                price_match = re.search(r'\$(\d+\.?\d*)', price_text)
+                                if price_match:
+                                    product_data['selling_price'] = float(price_match.group(1))
+                                    break
+                        if product_data['selling_price']:
+                            break
+                    except (NoSuchElementException, ValueError):
+                        continue
+                
+                # Look for original price (for discount calculation)
+                original_price_selectors = [
+                    "//span[contains(@class, 'original-price')]",
+                    "//span[contains(@data-test, 'original-price')]",
+                    "//span[contains(@class, 'sr-only') and contains(text(), 'original price')]"
+                ]
+                
+                original_price = None
+                for selector in original_price_selectors:
+                    try:
+                        orig_element = self.driver.find_element(By.XPATH, selector)
+                        orig_text = orig_element.text.strip()
+                        price_match = re.search(r'\$(\d+\.?\d*)', orig_text)
+                        if price_match:
+                            original_price = float(price_match.group(1))
+                            break
+                    except (NoSuchElementException, ValueError):
+                        continue
+                
+                # Calculate discount
+                if original_price and product_data['selling_price']:
+                    if original_price > product_data['selling_price']:
+                        discount = original_price - product_data['selling_price']
+                        discount_percent = (discount / original_price) * 100
+                        product_data['discount_offered'] = f"${discount:.2f} ({discount_percent:.1f}%)"
+                        product_data['discounted_price'] = product_data['selling_price']
+                        product_data['selling_price'] = original_price
+                        
+            except Exception as e:
+                logging.warning(f"Error extracting pricing: {str(e)}")
+            
+            # Extract ratings and review count
+            try:
+                # Look for rating
+                rating_selectors = [
+                    "//span[contains(@class, 'average-rating')]",
+                    "//div[contains(@data-test, 'rating')]//span",
+                    "//span[contains(@aria-label, 'star')]",
+                    "//*[contains(@class, 'rating')]//span[contains(text(), '.')]"
+                ]
+                
+                for selector in rating_selectors:
+                    try:
+                        rating_element = self.driver.find_element(By.XPATH, selector)
+                        rating_text = rating_element.text.strip()
+                        rating_match = re.search(r'(\d+\.?\d*)', rating_text)
+                        if rating_match:
+                            product_data['ratings'] = float(rating_match.group(1))
+                            break
+                    except (NoSuchElementException, ValueError):
+                        continue
+                
+                # Look for review count
+                review_count_selectors = [
+                    "//span[contains(@class, 'review-count')]",
+                    "//span[contains(text(), 'review')]",
+                    "//a[contains(@href, 'reviews')]//span",
+                    "//*[contains(text(), 'reviews')]"
+                ]
+                
+                for selector in review_count_selectors:
+                    try:
+                        review_elements = self.driver.find_elements(By.XPATH, selector)
+                        for review_element in review_elements:
+                            review_text = review_element.text.strip()
+                            count_match = re.search(r'(\d+)', review_text)
+                            if count_match and 'review' in review_text.lower():
+                                product_data['review_count'] = int(count_match.group(1))
+                                break
+                        if product_data['review_count']:
+                            break
+                    except (NoSuchElementException, ValueError):
+                        continue
+                        
+            except Exception as e:
+                logging.warning(f"Error extracting ratings/reviews: {str(e)}")
+            
+            # Extract product specifications
+            try:
+                spec_data = {}
+                spec_selectors = [
+                    "//div[contains(@class, 'product-details')]",
+                    "//div[contains(@data-test, 'item-details')]",
+                    "//div[contains(@class, 'specifications')]"
+                ]
+                
+                for selector in spec_selectors:
+                    try:
+                        spec_sections = self.driver.find_elements(By.XPATH, selector)
+                        for section in spec_sections:
+                            # Look for key-value pairs
+                            spec_items = section.find_elements(By.XPATH, ".//dt | .//dd | .//tr")
+                            for i in range(0, len(spec_items), 2):
+                                if i + 1 < len(spec_items):
+                                    key = spec_items[i].text.strip()
+                                    value = spec_items[i + 1].text.strip()
+                                    if key and value:
+                                        spec_data[key] = value
+                        if spec_data:
+                            break
+                    except Exception:
+                        continue
+                
+                if spec_data:
+                    product_data['specifications'] = json.dumps(spec_data, indent=2)
+                    
+            except Exception as e:
+                logging.warning(f"Error extracting specifications: {str(e)}")
+            
+            # Extract SKU information
+            try:
+                # Look for SKU/TCIN
+                sku_selectors = [
+                    "//span[contains(text(), 'Item #')]",
+                    "//span[contains(text(), 'TCIN')]",
+                    "//div[contains(@class, 'tcin')]"
+                ]
+                
+                for selector in sku_selectors:
+                    try:
+                        sku_element = self.driver.find_element(By.XPATH, selector)
+                        sku_text = sku_element.text.strip()
+                        sku_match = re.search(r'(\d+)', sku_text)
+                        if sku_match:
+                            product_data['sku_code'] = sku_match.group(1)
+                            break
+                    except NoSuchElementException:
+                        continue
+                
+                # If no SKU found, use TCIN from URL
+                if not product_data['sku_code']:
+                    product_data['sku_code'] = product_data['tcin']
+                    
+            except Exception as e:
+                logging.warning(f"Error extracting SKU: {str(e)}")
+            
+            # Extract available variants/SKUs
+            try:
+                variant_data = []
+                
+                # Look for size/color variants
+                variant_selectors = [
+                    "//div[contains(@class, 'variant')]//button",
+                    "//div[contains(@data-test, 'variant')]//button",
+                    "//fieldset//button[contains(@class, 'swatch')]",
+                    "//div[contains(@class, 'swatch')]//button"
+                ]
+                
+                for selector in variant_selectors:
+                    try:
+                        variant_elements = self.driver.find_elements(By.XPATH, selector)
+                        for variant in variant_elements:
+                            variant_text = variant.get_attribute('aria-label') or variant.text.strip()
+                            if variant_text:
+                                variant_data.append(variant_text)
+                        if variant_data:
+                            break
+                    except Exception:
+                        continue
+                
+                if variant_data:
+                    product_data['skus_available'] = list(set(variant_data))
+                    
+            except Exception as e:
+                logging.warning(f"Error extracting variants: {str(e)}")
+            
+            # Extract reviews
+            try:
+                reviews_data = self._extract_reviews()
+                product_data['reviews'] = reviews_data
+            except Exception as e:
+                logging.warning(f"Error extracting reviews: {str(e)}")
+            
+            logging.info(f"Successfully scraped product: {product_data.get('product_name', 'Unknown')}")
+            return product_data
+            
+        except Exception as e:
+            logging.error(f"Error scraping product {product_url}: {str(e)}")
+            return None
+    
+    def _extract_reviews(self):
+        """Extract product reviews from the current page"""
+        reviews = []
+        
+        try:
+            # Try to find and click reviews section
+            review_section_selectors = [
+                "//a[contains(@href, 'reviews')]",
+                "//button[contains(text(), 'review')]",
+                "//div[contains(@class, 'reviews')]",
+                "//section[contains(@class, 'review')]"
+            ]
+            
+            # Try to navigate to reviews section
+            for selector in review_section_selectors:
+                try:
+                    review_button = self.driver.find_element(By.XPATH, selector)
+                    self.driver.execute_script("arguments[0].click();", review_button)
+                    self._random_delay()
+                    break
+                except Exception:
+                    continue
+            
+            # Wait for reviews to load
+            WebDriverWait(self.driver, 10).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'review')]")),
+                    EC.presence_of_element_located((By.XPATH, "//div[contains(@data-test, 'review')]"))
+                )
+            )
+            
+            # Extract individual reviews
+            review_selectors = [
+                "//div[contains(@class, 'review-item')]",
+                "//div[contains(@data-test, 'review')]",
+                "//div[contains(@class, 'review')]"
+            ]
+            
+            for selector in review_selectors:
+                try:
+                    review_elements = self.driver.find_elements(By.XPATH, selector)
+                    
+                    for review_element in review_elements[:self.max_reviews_per_product]:
+                        try:
+                            review_data = {}
+                            
+                            # Extract reviewer name
+                            try:
+                                name_element = review_element.find_element(By.XPATH, ".//span[contains(@class, 'reviewer-name')] | .//div[contains(@class, 'reviewer')]")
+                                review_data['reviewer_name'] = name_element.text.strip()
+                            except:
+                                review_data['reviewer_name'] = "Anonymous"
+                            
+                            # Extract rating
+                            try:
+                                rating_element = review_element.find_element(By.XPATH, ".//span[contains(@class, 'rating')] | .//*[contains(@aria-label, 'star')]")
+                                rating_text = rating_element.get_attribute('aria-label') or rating_element.text
+                                rating_match = re.search(r'(\d+)', rating_text)
+                                if rating_match:
+                                    review_data['rating'] = int(rating_match.group(1))
+                            except:
+                                review_data['rating'] = None
+                            
+                            # Extract review text
+                            try:
+                                text_element = review_element.find_element(By.XPATH, ".//div[contains(@class, 'review-text')] | .//p | .//div[contains(@class, 'content')]")
+                                review_data['review_text'] = text_element.text.strip()
+                            except:
+                                review_data['review_text'] = ""
+                            
+                            # Extract review date
+                            try:
+                                date_element = review_element.find_element(By.XPATH, ".//span[contains(@class, 'date')] | .//time")
+                                review_data['review_date'] = date_element.text.strip()
+                            except:
+                                review_data['review_date'] = None
+                            
+                            if review_data.get('review_text') or review_data.get('rating'):
+                                reviews.append(review_data)
+                                
+                        except Exception as e:
+                            logging.warning(f"Error extracting individual review: {str(e)}")
+                            continue
+                    
+                    if reviews:
+                        break
+                        
+                except Exception as e:
+                    logging.warning(f"Error with review selector {selector}: {str(e)}")
+                    continue
+            
+            logging.info(f"Extracted {len(reviews)} reviews")
+            
+        except Exception as e:
+            logging.warning(f"Error extracting reviews: {str(e)}")
+        
+        return reviews
+    
+    def _discover_products_from_category(self, category_url):
+        """Discover product URLs from a category page"""
+        product_urls = []
+        
+        try:
+            if not self._navigate_with_retry(category_url):
+                return product_urls
+            
+            # Extract products from current page
+            current_page_products = self._extract_product_urls_from_selenium()
+            product_urls.extend(current_page_products)
+            
+            # Handle pagination
+            page_number = 1
+            max_pages = 5  # Limit to prevent infinite scrolling
+            
+            while page_number < max_pages and len(product_urls) < self.max_products:
+                try:
+                    # Look for "Next" button or pagination
+                    next_selectors = [
+                        "//button[contains(@aria-label, 'next')]",
+                        "//a[contains(@aria-label, 'next')]",
+                        "//button[contains(text(), 'Next')]",
+                        f"//a[contains(@href, 'Nao={page_number * 24}')]"  # Target's pagination pattern
+                    ]
+                    
+                    next_clicked = False
+                    for selector in next_selectors:
+                        try:
+                            next_button = WebDriverWait(self.driver, 5).until(
+                                EC.element_to_be_clickable((By.XPATH, selector))
+                            )
+                            self.driver.execute_script("arguments[0].click();", next_button)
+                            self._random_delay()
+                            
+                            # Wait for new products to load
+                            WebDriverWait(self.driver, 10).until(
+                                EC.presence_of_element_located((By.TAG_NAME, "body"))
+                            )
+                            
+                            # Extract products from new page
+                            new_products = self._extract_product_urls_from_selenium()
+                            if new_products:
+                                product_urls.extend(new_products)
+                                page_number += 1
+                                next_clicked = True
+                                logging.info(f"Moved to page {page_number}, total products found: {len(product_urls)}")
+                            break
+                            
+                        except (TimeoutException, ElementClickInterceptedException):
+                            continue
+                        except Exception as e:
+                            logging.warning(f"Error clicking next button: {str(e)}")
+                            continue
+                    
+                    if not next_clicked:
+                        logging.info("No more pages available")
+                        break
+                        
+                except Exception as e:
+                    logging.warning(f"Error in pagination: {str(e)}")
+                    break
+            
+        except Exception as e:
+            logging.error(f"Error discovering products from category {category_url}: {str(e)}")
+        
+        # Remove duplicates
+        unique_urls = list(set(product_urls))
+        logging.info(f"Discovered {len(unique_urls)} unique products from category")
+        return unique_urls
+    
+    def _discover_products_from_search(self, search_term):
+        """Discover product URLs from search results"""
+        product_urls = []
+        
+        try:
+            # Navigate to Target homepage
+            if not self._navigate_with_retry("https://www.target.com"):
+                return product_urls
+            
+            # Find search box and perform search
+            search_selectors = [
+                "//input[contains(@data-test, 'search')]",
+                "//input[contains(@placeholder, 'search')]",
+                "//input[@id='search']",
+                "//input[@name='search']"
+            ]
+            
+            search_box = None
+            for selector in search_selectors:
+                try:
+                    search_box = WebDriverWait(self.driver, 10).until(
+                        EC.presence_of_element_located((By.XPATH, selector))
+                    )
+                    break
+                except TimeoutException:
+                    continue
+            
+            if not search_box:
+                logging.error("Could not find search box")
+                return product_urls
+            
+            # Clear and enter search term
+            search_box.clear()
+            search_box.send_keys(search_term)
+            search_box.send_keys(Keys.RETURN)
+            
+            # Wait for search results
+            WebDriverWait(self.driver, 15).until(
+                EC.presence_of_element_located((By.TAG_NAME, "body"))
+            )
+            
+            self._random_delay()
+            
+            # Extract products from search results
+            search_products = self._extract_product_urls_from_selenium()
+            product_urls.extend(search_products)
+            
+            logging.info(f"Found {len(product_urls)} products for search term: {search_term}")
+            
+        except Exception as e:
+            logging.error(f"Error searching for '{search_term}': {str(e)}")
+        
+        return product_urls
+    
+    def _export_to_excel(self):
+        """Export scraped data to Excel file with formatting"""
+        try:
+            # Create workbook and worksheet
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "Target Products"
+            
+            # Define headers
+            headers = [
+                'Product Name', 'Selling Price', 'Discount Offered', 'Discounted Price',
+                'Specifications', 'Ratings', 'Review Count', 'Reviews', 'SKU Code',
+                'SKUs Available', 'URL', 'TCIN', 'Scraped At'
+            ]
+            
+            # Write headers with formatting
+            for col_num, header in enumerate(headers, 1):
+                cell = ws.cell(row=1, column=col_num, value=header)
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            
+            # Write data
+            for row_num, product in enumerate(self.products, 2):
+                ws.cell(row=row_num, column=1, value=product.get('product_name', ''))
+                ws.cell(row=row_num, column=2, value=product.get('selling_price', ''))
+                ws.cell(row=row_num, column=3, value=product.get('discount_offered', ''))
+                ws.cell(row=row_num, column=4, value=product.get('discounted_price', ''))
+                ws.cell(row=row_num, column=5, value=product.get('specifications', ''))
+                ws.cell(row=row_num, column=6, value=product.get('ratings', ''))
+                ws.cell(row=row_num, column=7, value=product.get('review_count', ''))
+                
+                # Format reviews
+                reviews = product.get('reviews', [])
+                reviews_text = "\n".join([
+                    f"Rating: {r.get('rating', 'N/A')}/5 | Reviewer: {r.get('reviewer_name', 'Anonymous')}\n"
+                    f"Review: {r.get('review_text', '')[:200]}{'...' if len(r.get('review_text', '')) > 200 else ''}\n"
+                    f"Date: {r.get('review_date', 'N/A')}\n{'-'*50}"
+                    for r in reviews[:5]  # Limit to first 5 reviews for Excel
+                ])
+                ws.cell(row=row_num, column=8, value=reviews_text)
+                
+                ws.cell(row=row_num, column=9, value=product.get('sku_code', ''))
+                ws.cell(row=row_num, column=10, value=', '.join(product.get('skus_available', [])))
+                ws.cell(row=row_num, column=11, value=product.get('url', ''))
+                ws.cell(row=row_num, column=12, value=product.get('tcin', ''))
+                ws.cell(row=row_num, column=13, value=product.get('scraped_at', ''))
+            
+            # Auto-adjust column widths
+            for column in ws.columns:
+                max_length = 0
+                column_letter = get_column_letter(column[0].column)
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)  # Cap at 50 characters
+                ws.column_dimensions[column_letter].width = adjusted_width
+            
+            # Save workbook
+            wb.save(self.output_file)
+            logging.info(f"Data exported to {self.output_file}")
+            
+        except Exception as e:
+            logging.error(f"Error exporting to Excel: {str(e)}")
+            # Fallback to CSV
+            try:
+                df = pd.DataFrame(self.products)
+                csv_file = self.output_file.replace('.xlsx', '.csv')
+                df.to_csv(csv_file, index=False)
+                logging.info(f"Data exported to CSV: {csv_file}")
+            except Exception as csv_error:
+                logging.error(f"Error exporting to CSV: {str(csv_error)}")
+    
+    def scrape(self):
+        """Main scraping method that coordinates the entire process"""
+        logging.info(f"Starting Target scraper - Max products: {self.max_products}")
+        
+        try:
+            # Check if we already have enough products
+            if len(self.products) >= self.max_products:
+                logging.info(f"Already have {len(self.products)} products, skipping scraping")
+                self._export_to_excel()
+                return
+            
+            all_product_urls = []
+            
+            # Discover products from categories
+            logging.info("Discovering products from categories...")
+            for category in self.popular_categories:
+                if len(all_product_urls) >= self.max_products:
+                    break
+                
+                category_products = self._discover_products_from_category(category['url'])
+                all_product_urls.extend(category_products)
+                self._random_delay()
+            
+            # Discover products from search terms
+            logging.info("Discovering products from search terms...")
+            for search_term in self.popular_search_terms:
+                if len(all_product_urls) >= self.max_products:
+                    break
+                
+                search_products = self._discover_products_from_search(search_term)
+                all_product_urls.extend(search_products)
+                self._random_delay()
+            
+            # Remove duplicates and limit to max_products
+            unique_urls = list(set(all_product_urls))
+            random.shuffle(unique_urls)  # Randomize order
+            urls_to_scrape = unique_urls[:self.max_products - len(self.products)]
+            
+            logging.info(f"Found {len(urls_to_scrape)} unique product URLs to scrape")
+            
+            # Scrape individual products
+            scraped_count = 0
+            for i, product_url in enumerate(urls_to_scrape):
+                try:
+                    # Check if we've already scraped this URL
+                    if product_url in [p.get('url') for p in self.products]:
+                        continue
+                    
+                    logging.info(f"Scraping product {i+1}/{len(urls_to_scrape)}: {product_url}")
+                    
+                    product_data = self._scrape_product_details(product_url)
+                    
+                    if product_data:
+                        self.products.append(product_data)
+                        scraped_count += 1
+                        
+                        # Save temporary state periodically
+                        if scraped_count % self.temp_save_interval == 0:
+                            self._save_temp_state()
+                            logging.info(f"Saved temporary state - {scraped_count} products scraped")
+                    
+                    # Add delay between products
+                    self._random_delay()
+                    
+                    # Rotate user agent occasionally
+                    if i % 10 == 0:
+                        self._rotate_user_agent()
+                    
+                    # Check if we've reached our target
+                    if len(self.products) >= self.max_products:
+                        break
+                        
+                except Exception as e:
+                    logging.error(f"Error scraping product {product_url}: {str(e)}")
+                    continue
+            
+            # Final save
+            self._save_temp_state()
+            
+            # Export results
+            logging.info(f"Scraping completed. Total products scraped: {len(self.products)}")
+            self._export_to_excel()
+            
+        except Exception as e:
+            logging.error(f"Error in main scraping process: {str(e)}")
+        finally:
+            self.cleanup()
+    
+    def cleanup(self):
+        """Clean up resources"""
+        try:
+            if self.driver:
+                self.driver.quit()
+                logging.info("WebDriver closed")
+            
+            if self.session:
+                self.session.close()
+                logging.info("Session closed")
+            
+            # Clean up temporary file
+            if os.path.exists(self.temp_file):
+                os.remove(self.temp_file)
+                logging.info("Temporary file cleaned up")
+                
+        except Exception as e:
+            logging.error(f"Error during cleanup: {str(e)}")
+
+def main():
+    """Main function to run the scraper"""
+    print("Target.com Product Scraper")
+    print("=" * 50)
+    
+    try:
+        # Set default values for automated operation
+        max_products = 20  # Default number of products to scrape
+        output_file = None  # Auto-generated filename
+        
+        print(f"Starting automated scraping of {max_products} products...")
+        print("Output will be saved to auto-generated Excel file...")
+        
+        # Create and run scraper
+        scraper = TargetScraper(
+            max_products=max_products,
+            output_file=output_file,
+            temp_save_interval=10,
+            max_reviews_per_product=10
+        )
+        
+        scraper.scrape()
+        
+        print(f"\nScraping completed successfully!")
+        print(f"Results saved to: {scraper.output_file}")
+        print(f"Total products scraped: {len(scraper.products)}")
+        
+    except KeyboardInterrupt:
+        print("\nScraping interrupted by user")
+    except Exception as e:
+        print(f"\nError: {str(e)}")
+        logging.error(f"Main execution error: {str(e)}")
+
+if __name__ == "__main__":
+    main()

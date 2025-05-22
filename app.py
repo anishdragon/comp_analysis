@@ -14,6 +14,7 @@ from utils.anthropic_helper import analyze_review, generate_category_summary
 # Import scraper functions
 from utils.google_play_scraper import scrape_google_play_reviews
 from utils.trustpilot_scraper import scrape_trustpilot_reviews
+from utils.ecommerce_scraper import scrape_ecommerce_reviews
 
 # Set page configuration
 st.set_page_config(
@@ -222,6 +223,14 @@ with main_tab1:
             
             with col2:
                 trustpilot_url = st.text_input("Trustpilot Company URL*", placeholder="e.g., https://www.trustpilot.com/review/target.com")
+            
+            # E-commerce scraping section
+            st.markdown("### 🛒 E-commerce Website Scraping")
+            col_ec1, col_ec2 = st.columns(2)
+            with col_ec1:
+                ecommerce_url = st.text_input("Enter E-commerce Website URL", placeholder="e.g., https://www.target.com")
+            with col_ec2:
+                ecommerce_product_count = st.number_input("Count of Product Data to be Scraped", min_value=1, max_value=200, value=50)
                 
             col3, col4 = st.columns(2)
             with col3:
