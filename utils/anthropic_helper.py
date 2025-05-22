@@ -3,17 +3,19 @@ import json
 import pandas as pd
 from anthropic import Anthropic
 
-def get_anthropic_client():
+def get_anthropic_client(api_key=None):
     """
-    Initialize and return the Anthropic client using the API key from environment variables
+    Initialize and return the Anthropic client using the provided API key
     """
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("Anthropic API key not found. Please set the ANTHROPIC_API_KEY environment variable.")
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+    
+    if not api_key:
+        raise ValueError("Anthropic API key not found. Please provide the API key.")
     
     return Anthropic(api_key=api_key)
 
-def analyze_review(review_content, review_title="", rating=None):
+def analyze_review(review_content, review_title="", rating=None, api_key=None):
     """
     Analyze a review using Anthropic Claude to determine sentiment, aspect, and issue type
     
@@ -21,6 +23,7 @@ def analyze_review(review_content, review_title="", rating=None):
         review_content (str): The main content of the review
         review_title (str, optional): The title of the review, if available
         rating (float, optional): The numerical rating, if available
+        api_key (str, optional): The Anthropic API key
     
     Returns:
         dict: A dictionary containing the analysis results
