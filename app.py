@@ -466,8 +466,28 @@ with main_tab1:
                         
                         # Show analyze button
                         if st.button("🔍 Analyze Uploaded Data", type="primary", use_container_width=True):
-                            st.success("🚀 Starting analysis of uploaded data...")
-                            st.rerun()
+                            # Check if Anthropic API key is available
+                            if not st.session_state.anthropic_api_key:
+                                st.error("❌ Please enter your Anthropic API key in the sidebar before analyzing.")
+                            else:
+                                # Switch to analysis tab
+                                st.session_state.current_tab = "analysis"
+                                st.success("🚀 Starting analysis of uploaded data...")
+                                # Use js to click the Analysis Results tab
+                                js = f"""
+                                <script>
+                                    function sleep(ms) {{
+                                        return new Promise(resolve => setTimeout(resolve, ms));
+                                    }}
+                                    async function clickTab() {{
+                                        await sleep(100);
+                                        document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
+                                    }}
+                                    clickTab();
+                                </script>
+                                """
+                                st.markdown(js, unsafe_allow_html=True)
+                                st.rerun()
                     
                 except Exception as e:
                     st.error(f"❌ Error processing file: {str(e)}")
