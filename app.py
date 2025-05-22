@@ -52,13 +52,18 @@ st.markdown("**Get data from various sources or upload existing data to analyze 
 with st.sidebar:
     st.header("⚙️ Configuration")
     
-    # Anthropic API Key input
-    anthropic_key = st.text_input("🔑 Anthropic API Key", value=st.session_state.anthropic_api_key, type="password")
-    if anthropic_key != st.session_state.anthropic_api_key:
-        st.session_state.anthropic_api_key = anthropic_key
-        os.environ["ANTHROPIC_API_KEY"] = anthropic_key
-    
-    st.info("💡 Anthropic Claude will analyze your reviews and provide detailed insights including emotions and urgency levels.")
+    # Only show API key input when on analysis tab or when analysis is needed
+    if st.session_state.current_tab == "analysis":
+        # Anthropic API Key input
+        st.subheader("🔑 API Key (Required for Analysis)")
+        anthropic_key = st.text_input("Enter Anthropic API Key", value=st.session_state.anthropic_api_key, type="password", key="api_key_sidebar")
+        if anthropic_key != st.session_state.anthropic_api_key:
+            st.session_state.anthropic_api_key = anthropic_key
+            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
+        
+        st.info("💡 Anthropic Claude will analyze your reviews and provide detailed insights including emotions and urgency levels.")
+    else:
+        st.info("💡 API key not required for data scraping or uploading. You'll need it when you start analysis.")
     
     st.markdown("---")
     
@@ -67,16 +72,26 @@ with st.sidebar:
         st.header("Filters")
         
         # Date range filter
-        if 'datetime' in st.session_state.df.columns:
-            min_date = st.session_state.df['datetime'].min().date() if not pd.isna(st.session_state.df['datetime'].min()) else datetime.now().date()
-            max_date = st.session_state.df['datetime'].max().date() if not pd.isna(st.session_state.df['datetime'].max()) else datetime.now().date()
-            
-            date_range = st.date_input(
-                "Date Range",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date
-            )
+        if st.session_state.df is not None and 'datetime' in st.session_state.df.columns:
+            # Handle datetime values safely
+            try:
+                datetime_col = pd.to_datetime(st.session_state.df['datetime'], errors='coerce')
+                min_date = datetime_col.min().date() if not pd.isna(datetime_col.min()) else datetime.now().date()
+                max_date = datetime_col.max().date() if not pd.isna(datetime_col.max()) else datetime.now().date()
+                
+                date_range = st.date_input(
+                    "Date Range",
+                    value=(min_date, max_date),
+                    min_value=min_date,
+                    max_value=max_date
+                )
+            except Exception:
+                # Default to current date if there are issues with the datetime column
+                default_date = datetime.now().date()
+                date_range = st.date_input(
+                    "Date Range",
+                    value=(default_date, default_date)
+                )
         
         # Sentiment filter
         sentiment_filter = st.multiselect(
