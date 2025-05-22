@@ -688,8 +688,8 @@ with main_tab2:
                                     show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
                                     break
                                 
-                                # Use Anthropic Claude
-                                result = analyze_review(review_content, review_title, rating)
+                                # Use Anthropic Claude with user-provided API key
+                                result = analyze_review(review_content, review_title, rating, api_key)
                                 
                                 # Add results to the analyzed data
                                 result_with_metadata = {

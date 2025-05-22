@@ -77,8 +77,8 @@ def analyze_review(review_content, review_title="", rating=None, api_key=None):
     """
     
     try:
-        # Get Anthropic client
-        client = get_anthropic_client()
+        # Get Anthropic client with provided API key
+        client = get_anthropic_client(api_key)
         
         # Make the API call
         #the newest Anthropic model is "claude-3-5-sonnet-20241022" which was released October 22, 2024
@@ -178,7 +178,7 @@ def analyze_review(review_content, review_title="", rating=None, api_key=None):
         }
         return default_response
 
-def generate_category_summary(issue_type, reviews):
+def generate_category_summary(issue_type, reviews, api_key=None):
     """
     Generate a summary and best practices for a specific issue type based on multiple reviews
     
@@ -213,8 +213,8 @@ def generate_category_summary(issue_type, reviews):
     """
     
     try:
-        # Get Anthropic client
-        client = get_anthropic_client()
+        # Get Anthropic client with provided API key
+        client = get_anthropic_client(api_key)
         
         # Make the API call
         #the newest Anthropic model is "claude-3-5-sonnet-20241022" which was released October 22, 2024
