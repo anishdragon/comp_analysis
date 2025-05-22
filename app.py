@@ -404,13 +404,23 @@ with main_tab1:
                     
                     # Convert to Excel for download - using proper error handling
                     try:
-                        output = io.BytesIO()
-                        combined_data.to_excel(output, engine='xlsxwriter', index=False, sheet_name='Scraped_Reviews')
+                        # Make sure we store the scraped data in session state BEFORE attempting download
+                        # This ensures data remains available for analysis after download
+                        if st.session_state.scraped_data is None:
+                            st.session_state.scraped_data = combined_data.copy()
+                            
+                        # Create Excel for download
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            combined_data.to_excel(writer, index=False, sheet_name='Scraped_Reviews')
+                            
+                        # Reset buffer position
+                        buffer.seek(0)
                         
-                        # Download button
+                        # Download button 
                         st.download_button(
                             label="📥 Download Excel File",
-                            data=output.getvalue(),
+                            data=buffer,
                             file_name=f"scraped_reviews_{main_company['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             type="primary",
@@ -569,8 +579,9 @@ with main_tab1:
             
             # Create Excel file in memory for download
             sample_output = io.BytesIO()
-            with pd.ExcelWriter(sample_output, engine='xlsxwriter') as writer:
+            with pd.ExcelWriter(sample_output, engine='openpyxl') as writer:
                 sample_data.to_excel(writer, index=False, sheet_name='Sample_Reviews')
+            sample_output.seek(0)
             
             # Download button
             st.download_button(
@@ -623,15 +634,19 @@ with main_tab2:
                         review_title = row.get('review_title', '')
                         rating = row.get('rating', None)
                         
-                        # Skip empty reviews
-                        if pd.isna(review_content) or review_content.strip() == "":
+                        # Skip empty reviews with proper type checking
+                        if pd.isna(review_content) or (isinstance(review_content, str) and review_content.strip() == ""):
                             continue
                         
-                        # Use Anthropic Claude for analysis
+                        # Store analysis errors to display only once at the end
+                        if 'analysis_errors' not in st.session_state:
+                            st.session_state.analysis_errors = []
+                            
+                        # Use Anthropic Claude for analysis  
                         try:
                             # Check if Anthropic API key is provided
                             if not st.session_state.anthropic_api_key:
-                                st.error("Please enter your Anthropic API key in the sidebar before analyzing.")
+                                show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
                                 break
                             
                             # Use Anthropic Claude
@@ -648,15 +663,53 @@ with main_tab2:
                             categories['sentiment'].append(result['sentiment'])
                             categories['aspect'].append(result['aspect'])
                             categories['issue_type'].append(result['issue_type'])
-                            categories['emotion'].append(result['emotion'])
-                            categories['urgency'].append(result['urgency'])
+                            # Ensure keys exist before accessing
+                            if 'emotion' in result:
+                                categories['emotion'].append(result['emotion'])
+                            else:
+                                categories['emotion'].append('Neutral')
+                                
+                            if 'urgency' in result:
+                                categories['urgency'].append(result['urgency'])
+                            else:
+                                categories['urgency'].append('Medium')
                             
                         except Exception as e:
-                            st.error(f"Error analyzing review: {str(e)}")
+                            # Add error to collection
+                            error_msg = str(e)
+                            if error_msg not in st.session_state.analysis_errors:
+                                st.session_state.analysis_errors.append(error_msg)
+                            
+                            # Create a default result for this row
+                            default_result = {
+                                **row.to_dict(),
+                                'sentiment': 'Neutral',
+                                'sentiment_score': 0.0,
+                                'aspect': 'Other',
+                                'issue_type': 'General Feedback',
+                                'emotion': 'Neutral',
+                                'urgency': 'Medium',
+                                'confidence': 0.5
+                            }
+                            analyzed_data.append(default_result)
+                            
+                            # Update categories with default values
+                            categories['sentiment'].append('Neutral')
+                            categories['aspect'].append('Other')
+                            categories['issue_type'].append('General Feedback')
+                            categories['emotion'].append('Neutral')
+                            categories['urgency'].append('Medium')
                             
                     # Store analyzed data and categories in session state
                     st.session_state.analyzed_data = analyzed_data
                     st.session_state.categories = categories
+                    
+                    # Show analysis errors if any happened
+                    if hasattr(st.session_state, 'analysis_errors') and st.session_state.analysis_errors:
+                        if len(st.session_state.analysis_errors) > 3:
+                            show_error(f"Some reviews had analysis issues ({len(st.session_state.analysis_errors)} total). Analysis continued with default values for these reviews.")
+                        else:
+                            show_error(f"Issues during analysis: {', '.join(st.session_state.analysis_errors[:3])}")
                     
                     # Generate knowledge base summaries
                     with st.spinner("Generating knowledge base summaries..."):
