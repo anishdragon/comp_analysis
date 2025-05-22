@@ -764,8 +764,8 @@ with main_tab2:
                             
                             if issue_reviews:
                                 try:
-                                    # Use Anthropic Claude for summarization
-                                    summary = generate_category_summary(issue_type, issue_reviews)
+                                    # Use Anthropic Claude for summarization with user-provided API key
+                                    summary = generate_category_summary(issue_type, issue_reviews, api_key)
                                     knowledge_base[issue_type] = summary
                                 except Exception as e:
                                     st.error(f"Error generating summary for {issue_type}: {str(e)}")
