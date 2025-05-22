@@ -104,13 +104,331 @@ with st.sidebar:
         # Apply filters button
         apply_filters = st.button("Apply Filters")
 
-# Main content area
-tab1, tab2, tab3 = st.tabs(["Data Upload & Analysis", "Categories & Visualization", "Knowledge Base"])
+# Main navigation - Data Sourcing is now the primary landing page
+st.markdown("---")
 
-# Tab 1: Data Upload & Analysis
-with tab1:
-    st.header("Upload Data")
-    st.markdown("Upload an Excel file with review data. The file should have columns for datetime, username, review content, and review datetime. Optional columns: review title and rating.")
+# Create main navigation tabs
+main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
+    "🔍 Data Sourcing", 
+    "📊 Analysis Results", 
+    "📈 Visualizations", 
+    "📚 Knowledge Base"
+])
+
+# Tab 1: Data Sourcing (Primary landing page)
+with main_tab1:
+    st.header("🔍 Data Sourcing")
+    st.markdown("Choose how you want to get your review data for analysis:")
+    
+    # Check if user has already chosen a method for this session
+    if st.session_state.data_source_method is None:
+        # Show initial choice
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🌐 Scrape Data")
+            st.markdown("""
+            **Automatically collect reviews from:**
+            - Google Play Store
+            - Trustpilot
+            - Multiple companies and competitors
+            """)
+            
+            if st.button("🚀 Scrape Data", type="primary", use_container_width=True):
+                st.session_state.data_source_method = "scrape"
+                st.rerun()
+        
+        with col2:
+            st.subheader("📁 Upload Data")
+            st.markdown("""
+            **Upload your existing data:**
+            - Excel files with review data
+            - Multiple company datasets
+            - Pre-formatted review collections
+            """)
+            
+            if st.button("📤 Upload Data", type="secondary", use_container_width=True):
+                st.session_state.data_source_method = "upload"
+                st.rerun()
+    
+    elif st.session_state.data_source_method == "scrape":
+        # Scraping interface
+        st.subheader("🌐 Data Scraping Configuration")
+        
+        # Reset button
+        if st.button("🔄 Change Data Source Method", type="secondary"):
+            st.session_state.data_source_method = None
+            st.session_state.scraped_data = None
+            st.session_state.scraping_completed = False
+            st.rerun()
+        
+        # Scraping form
+        with st.form("scraping_form"):
+            st.markdown("### 🏢 Main Company Information")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                main_company = st.text_input("Company Name*", placeholder="e.g., Target")
+                google_app_id = st.text_input("Google Play Store App ID*", placeholder="e.g., com.target.ui")
+            
+            with col2:
+                trustpilot_url = st.text_input("Trustpilot Company URL*", placeholder="e.g., https://www.trustpilot.com/review/target.com")
+                
+            col3, col4 = st.columns(2)
+            with col3:
+                google_review_count = st.number_input("Google Play Reviews Count", min_value=1, max_value=1000, value=100)
+            with col4:
+                trustpilot_review_count = st.number_input("Trustpilot Reviews Count", min_value=1, max_value=500, value=50)
+            
+            st.markdown("### 🏆 Competitor Analysis")
+            competitor_count = st.selectbox("Number of Competitors to Benchmark", [0, 1, 2])
+            
+            # Competitor fields based on selection
+            competitors_data = []
+            
+            if competitor_count >= 1:
+                st.markdown("#### Competitor 1")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    comp1_name = st.text_input("Competitor 1 Name", placeholder="e.g., Walmart")
+                with col2:
+                    comp1_google = st.text_input("Competitor 1 Google Play ID", placeholder="e.g., com.walmart.android")
+                with col3:
+                    comp1_trustpilot = st.text_input("Competitor 1 Trustpilot URL", placeholder="e.g., https://www.trustpilot.com/review/walmart.com")
+                
+                if comp1_name:
+                    competitors_data.append({
+                        'name': comp1_name,
+                        'google_id': comp1_google,
+                        'trustpilot_url': comp1_trustpilot
+                    })
+            
+            if competitor_count >= 2:
+                st.markdown("#### Competitor 2")
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    comp2_name = st.text_input("Competitor 2 Name", placeholder="e.g., Amazon")
+                with col2:
+                    comp2_google = st.text_input("Competitor 2 Google Play ID", placeholder="e.g., com.amazon.mShop.android.shopping")
+                with col3:
+                    comp2_trustpilot = st.text_input("Competitor 2 Trustpilot URL", placeholder="e.g., https://www.trustpilot.com/review/amazon.com")
+                
+                if comp2_name:
+                    competitors_data.append({
+                        'name': comp2_name,
+                        'google_id': comp2_google,
+                        'trustpilot_url': comp2_trustpilot
+                    })
+            
+            # Start scraping button
+            submitted = st.form_submit_button("🚀 Start Data Collection", type="primary", use_container_width=True)
+            
+            if submitted:
+                # Validate required fields
+                if not all([main_company, google_app_id, trustpilot_url]):
+                    st.error("❌ Please fill in all required main company fields (marked with *)")
+                elif not st.session_state.anthropic_api_key:
+                    st.error("❌ Please enter your Anthropic API key in the sidebar before starting data collection")
+                else:
+                    st.session_state.scraping_in_progress = True
+                    
+                    # Store scraping configuration
+                    st.session_state.scraping_config = {
+                        'main_company': {
+                            'name': main_company,
+                            'google_id': google_app_id,
+                            'trustpilot_url': trustpilot_url,
+                            'google_count': google_review_count,
+                            'trustpilot_count': trustpilot_review_count
+                        },
+                        'competitors': competitors_data
+                    }
+                    st.rerun()
+        
+        # Show scraping progress if in progress
+        if st.session_state.scraping_in_progress:
+            st.markdown("---")
+            st.subheader("🔄 Data Collection in Progress")
+            
+            # Progress containers for each source
+            google_progress = st.container()
+            trustpilot_progress = st.container()
+            
+            # Overall progress
+            overall_progress = st.progress(0)
+            overall_status = st.empty()
+            
+            all_scraped_data = []
+            total_sources = 2  # Google Play + Trustpilot for main company
+            completed_sources = 0
+            
+            try:
+                config = st.session_state.scraping_config
+                main_company = config['main_company']
+                
+                # Scrape Google Play Store reviews
+                with overall_status:
+                    st.info("📱 Starting Google Play Store data collection...")
+                
+                google_data = scrape_google_play_reviews(
+                    app_id=main_company['google_id'],
+                    max_reviews=main_company['google_count'],
+                    company_name=main_company['name'],
+                    progress_container=google_progress
+                )
+                
+                if not google_data.empty:
+                    all_scraped_data.append(google_data)
+                
+                completed_sources += 1
+                overall_progress.progress(completed_sources / total_sources)
+                
+                # Scrape Trustpilot reviews
+                with overall_status:
+                    st.info("🌐 Starting Trustpilot data collection...")
+                
+                trustpilot_data = scrape_trustpilot_reviews(
+                    company_url=main_company['trustpilot_url'],
+                    max_reviews=main_company['trustpilot_count'],
+                    company_name=main_company['name'],
+                    progress_container=trustpilot_progress
+                )
+                
+                if not trustpilot_data.empty:
+                    all_scraped_data.append(trustpilot_data)
+                
+                completed_sources += 1
+                overall_progress.progress(completed_sources / total_sources)
+                
+                # Process competitors if any
+                for i, competitor in enumerate(config['competitors']):
+                    if competitor['google_id']:
+                        comp_google_data = scrape_google_play_reviews(
+                            app_id=competitor['google_id'],
+                            max_reviews=main_company['google_count'],
+                            company_name=competitor['name'],
+                            progress_container=st.container()
+                        )
+                        if not comp_google_data.empty:
+                            all_scraped_data.append(comp_google_data)
+                    
+                    if competitor['trustpilot_url']:
+                        comp_trustpilot_data = scrape_trustpilot_reviews(
+                            company_url=competitor['trustpilot_url'],
+                            max_reviews=main_company['trustpilot_count'],
+                            company_name=competitor['name'],
+                            progress_container=st.container()
+                        )
+                        if not comp_trustpilot_data.empty:
+                            all_scraped_data.append(comp_trustpilot_data)
+                
+                # Combine all data
+                if all_scraped_data:
+                    combined_data = pd.concat(all_scraped_data, ignore_index=True)
+                    st.session_state.scraped_data = combined_data
+                    st.session_state.df = combined_data  # Set as main dataframe
+                    st.session_state.scraping_completed = True
+                    st.session_state.scraping_in_progress = False
+                    
+                    with overall_status:
+                        st.success(f"✅ Data collection completed! Collected {len(combined_data)} total reviews")
+                    
+                    # Provide download option
+                    st.markdown("### 📥 Download Scraped Data")
+                    
+                    # Convert to Excel for download
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                        combined_data.to_excel(writer, index=False, sheet_name='Scraped_Reviews')
+                    
+                    st.download_button(
+                        label="📥 Download Excel File",
+                        data=output.getvalue(),
+                        file_name=f"scraped_reviews_{main_company['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
+                    
+                    # Show analyze button
+                    if st.button("🔍 Analyze Scraped Data", type="primary", use_container_width=True):
+                        # Switch to analysis and start analysis
+                        st.success("🚀 Starting analysis of scraped data...")
+                        st.rerun()
+                
+                else:
+                    with overall_status:
+                        st.error("❌ No data was collected from any source")
+                    st.session_state.scraping_in_progress = False
+                    
+            except Exception as e:
+                st.error(f"❌ Error during data collection: {str(e)}")
+                st.session_state.scraping_in_progress = False
+    
+    elif st.session_state.data_source_method == "upload":
+        # Upload interface
+        st.subheader("📁 Data Upload")
+        
+        # Reset button
+        if st.button("🔄 Change Data Source Method", type="secondary"):
+            st.session_state.data_source_method = None
+            st.session_state.df = None
+            st.rerun()
+        
+        # File upload section
+        st.markdown("### 📤 Upload Your Review Data")
+        uploaded_file = st.file_uploader("Choose an Excel file", type=['xlsx', 'xls'])
+        
+        if uploaded_file is not None:
+            try:
+                # Process the uploaded file
+                df, error_msg = process_excel_file(uploaded_file)
+                
+                if error_msg:
+                    st.error(f"❌ Error processing file: {error_msg}")
+                else:
+                    st.session_state.df = df
+                    st.success(f"✅ File uploaded successfully! Found {len(df)} reviews")
+                    
+                    # Show data preview
+                    st.markdown("### 👀 Data Preview")
+                    st.dataframe(df.head(), use_container_width=True)
+                    
+                    # Show analyze button
+                    if st.button("🔍 Analyze Uploaded Data", type="primary", use_container_width=True):
+                        st.success("🚀 Starting analysis of uploaded data...")
+                        st.rerun()
+                    
+            except Exception as e:
+                st.error(f"❌ Error processing file: {str(e)}")
+        
+        # Show sample file download
+        st.markdown("### 📋 Sample File Format")
+        st.info("Your Excel file should contain columns for review content, usernames, dates, and ratings. Download our sample file to see the expected format.")
+        
+        # Create sample data
+        sample_data = pd.DataFrame({
+            'username': ['user1', 'user2', 'user3'],
+            'review_content': [
+                'Great app, love the features!',
+                'Could be better, has some bugs',
+                'Excellent customer service and easy to use'
+            ],
+            'rating': [5, 3, 4],
+            'datetime': ['2024-01-01', '2024-01-02', '2024-01-03'],
+            'review_title': ['Love it!', 'Needs work', 'Great experience']
+        })
+        
+        # Convert sample to Excel for download
+        sample_output = io.BytesIO()
+        with pd.ExcelWriter(sample_output, engine='xlsxwriter') as writer:
+            sample_data.to_excel(writer, index=False, sheet_name='Sample_Reviews')
+        
+        st.download_button(
+            label="📥 Download Sample Excel File",
+            data=sample_output.getvalue(),
+            file_name="sample_review_format.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
     
     # Create a sample file for download
     col1, col2 = st.columns([1, 2])
@@ -275,8 +593,8 @@ with tab1:
         except Exception as e:
             st.error(f"Error processing file: {str(e)}")
 
-# Tab 2: Categories & Visualization
-with tab2:
+# Tab 2: Analysis Results  
+with main_tab2:
     if st.session_state.analyzed_data:
         st.header("Review Categorization")
         
@@ -498,10 +816,66 @@ with tab2:
             
             st.plotly_chart(fig5, use_container_width=True)
     else:
-        st.info("Please upload and analyze data in the 'Data Upload & Analysis' tab first.")
+        st.info("Please upload and analyze data first in the 'Data Sourcing' tab.")
 
-# Tab 3: Knowledge Base
-with tab3:
+# Tab 3: Visualizations
+with main_tab3:
+    if st.session_state.analyzed_data:
+        st.header("📈 Data Visualizations")
+        
+        analyzed_df = pd.DataFrame(st.session_state.analyzed_data)
+        
+        # Sentiment Distribution
+        st.subheader("Sentiment Distribution")
+        sentiment_counts = analyzed_df['sentiment'].value_counts()
+        fig1 = px.pie(values=sentiment_counts.values, names=sentiment_counts.index, 
+                      title="Overall Sentiment Distribution")
+        st.plotly_chart(fig1, use_container_width=True)
+        
+        # Issue Type Distribution  
+        st.subheader("Issue Type Distribution")
+        issue_counts = analyzed_df['issue_type'].value_counts()
+        fig2 = px.bar(x=issue_counts.index, y=issue_counts.values,
+                      title="Issues by Category", labels={'x': 'Issue Type', 'y': 'Count'})
+        st.plotly_chart(fig2, use_container_width=True)
+        
+        # Emotion Analysis (if available)
+        if 'emotions' in analyzed_df.columns:
+            st.subheader("Emotion Analysis")
+            all_emotions = []
+            for emotions_list in analyzed_df['emotions'].dropna():
+                if isinstance(emotions_list, list):
+                    all_emotions.extend(emotions_list)
+            
+            if all_emotions:
+                emotion_counts = pd.Series(all_emotions).value_counts()
+                fig3 = px.bar(x=emotion_counts.index, y=emotion_counts.values,
+                              title="Most Common Emotions", labels={'x': 'Emotion', 'y': 'Count'})
+                st.plotly_chart(fig3, use_container_width=True)
+        
+        # Urgency Distribution (if available)
+        if 'urgency' in analyzed_df.columns:
+            st.subheader("Urgency Level Distribution")
+            urgency_counts = analyzed_df['urgency'].value_counts()
+            fig4 = px.bar(x=urgency_counts.index, y=urgency_counts.values,
+                          title="Reviews by Urgency Level", labels={'x': 'Urgency', 'y': 'Count'})
+            st.plotly_chart(fig4, use_container_width=True)
+        
+        # Time Series Analysis (if datetime available)
+        if 'datetime' in analyzed_df.columns and not analyzed_df['datetime'].isna().all():
+            st.subheader("Sentiment Trends Over Time")
+            analyzed_df['datetime'] = pd.to_datetime(analyzed_df['datetime'])
+            analyzed_df['date'] = analyzed_df['datetime'].dt.date
+            
+            sentiment_time = analyzed_df.groupby(['date', 'sentiment']).size().reset_index(name='count')
+            fig5 = px.line(sentiment_time, x='date', y='count', color='sentiment',
+                           title="Sentiment Trends Over Time")
+            st.plotly_chart(fig5, use_container_width=True)
+    else:
+        st.info("Please upload and analyze data first in the 'Data Sourcing' tab.")
+
+# Tab 4: Knowledge Base
+with main_tab4:
     if st.session_state.knowledge_base:
         st.header("Knowledge Base")
         st.markdown("This section contains automatically generated summaries and insights for each issue type to help train staff and provide feedback to vendors.")
