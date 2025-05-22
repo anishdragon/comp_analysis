@@ -41,6 +41,8 @@ if 'scraping_in_progress' not in st.session_state:
     st.session_state.scraping_in_progress = False
 if 'scraping_completed' not in st.session_state:
     st.session_state.scraping_completed = False
+if 'current_tab' not in st.session_state:
+    st.session_state.current_tab = "data_sourcing"  # Track which tab is active
 
 # Main app header
 st.title("🚀 Sentiment Analysis & Knowledge Base Creator")
@@ -108,12 +110,13 @@ with st.sidebar:
 st.markdown("---")
 
 # Create main navigation tabs
-main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
-    "🔍 Data Sourcing", 
-    "📊 Analysis Results", 
-    "📈 Visualizations", 
-    "📚 Knowledge Base"
-])
+tab_names = ["🔍 Data Sourcing", "📊 Analysis Results", "📈 Visualizations", "📚 Knowledge Base"]
+main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs(tab_names)
+
+# Handle tab navigation based on session state
+if st.session_state.current_tab == "analysis":
+    # Set active tab to Analysis Results
+    st.session_state.current_tab = "data_sourcing"  # Reset for next time
 
 # Tab 1: Data Sourcing (Primary landing page)
 with main_tab1:
@@ -333,6 +336,40 @@ with main_tab1:
                     with overall_status:
                         st.success(f"✅ Data collection completed! Collected {len(combined_data)} total reviews")
                     
+                    # Show scraped data preview
+                    st.markdown("### 👀 Scraped Data Preview")
+                    st.dataframe(combined_data, use_container_width=True)
+                    
+                    # Create tabs for results breakdown
+                    source_tab1, source_tab2 = st.tabs(["📊 Source Breakdown", "🏢 Company Breakdown"])
+                    
+                    with source_tab1:
+                        # Show breakdown by source
+                        st.subheader("Review Sources")
+                        if 'source' in combined_data.columns:
+                            source_counts = combined_data['source'].value_counts().reset_index()
+                            source_counts.columns = ['Source', 'Count']
+                            
+                            # Create pie chart for sources
+                            fig = px.pie(source_counts, values='Count', names='Source', 
+                                         title=f'Total Reviews by Source (Total: {len(combined_data)})',
+                                         color_discrete_sequence=px.colors.qualitative.Bold)
+                            fig.update_traces(textposition='inside', textinfo='percent+label')
+                            st.plotly_chart(fig, use_container_width=True)
+                    
+                    with source_tab2:
+                        # Show breakdown by company
+                        st.subheader("Reviews by Company")
+                        if 'company' in combined_data.columns:
+                            company_counts = combined_data['company'].value_counts().reset_index()
+                            company_counts.columns = ['Company', 'Count']
+                            
+                            # Create bar chart for companies
+                            fig = px.bar(company_counts, x='Company', y='Count', 
+                                         title=f'Reviews by Company (Total: {len(combined_data)})',
+                                         color='Company', color_discrete_sequence=px.colors.qualitative.Bold)
+                            st.plotly_chart(fig, use_container_width=True)
+                    
                     # Provide download option
                     st.markdown("### 📥 Download Scraped Data")
                     
@@ -349,11 +386,38 @@ with main_tab1:
                         type="primary"
                     )
                     
+                    # Display a clear message that the data is available for analysis
+                    st.markdown("---")
+                    st.markdown("### 🔍 Analyze Your Scraped Data")
+                    st.info("The scraped data has been stored and is ready for analysis. Click the button below to analyze it using Anthropic Claude for sentiment analysis, categorization, and knowledge base creation.")
+                    
                     # Show analyze button
-                    if st.button("🔍 Analyze Scraped Data", type="primary", use_container_width=True):
-                        # Switch to analysis and start analysis
-                        st.success("🚀 Starting analysis of scraped data...")
-                        st.rerun()
+                    if st.button("🔍 Start Analysis", type="primary", use_container_width=True):
+                        # Check if Anthropic API key is available
+                        if not st.session_state.anthropic_api_key:
+                            st.error("❌ Please enter your Anthropic API key in the sidebar before analyzing.")
+                        else:
+                            # Switch to analysis tab and ensure data is preserved
+                            st.session_state.current_tab = "analysis"
+                            # Make sure the data is available for analysis
+                            if st.session_state.df is None and st.session_state.scraped_data is not None:
+                                st.session_state.df = st.session_state.scraped_data
+                            st.success("🚀 Starting analysis of scraped data...")
+                            # Use js to click the Analysis Results tab
+                            js = f"""
+                            <script>
+                                function sleep(ms) {{
+                                    return new Promise(resolve => setTimeout(resolve, ms));
+                                }}
+                                async function clickTab() {{
+                                    await sleep(100);
+                                    document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
+                                }}
+                                clickTab();
+                            </script>
+                            """
+                            st.markdown(js, unsafe_allow_html=True)
+                            st.rerun()
                 
                 else:
                     with overall_status:
