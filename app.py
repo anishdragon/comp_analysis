@@ -688,6 +688,9 @@ with main_tab2:
                                     show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
                                     break
                                 
+                                # Get API key from session state
+                                api_key = st.session_state.anthropic_api_key
+                                
                                 # Use Anthropic Claude with user-provided API key
                                 result = analyze_review(review_content, review_title, rating, api_key)
                                 
@@ -753,6 +756,9 @@ with main_tab2:
                     # Generate knowledge base summaries
                     with st.spinner("Generating knowledge base summaries..."):
                         knowledge_base = {}
+                        
+                        # Get API key from session state for knowledge base generation
+                        api_key = st.session_state.anthropic_api_key
                         
                         # Group by issue type
                         issue_types = list(set(categories['issue_type']))
