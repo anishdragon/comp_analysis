@@ -414,35 +414,9 @@ with main_tab1:
                                          color='Company', color_discrete_sequence=px.colors.qualitative.Bold)
                             st.plotly_chart(fig, use_container_width=True)
                     
-                    # Provide download option
-                    st.markdown("### 📥 Download Scraped Data")
-                    
-                    # Convert to Excel for download - using proper error handling
-                    try:
-                        # Make sure we store the scraped data in session state BEFORE attempting download
-                        # This ensures data remains available for analysis after download
-                        if st.session_state.scraped_data is None:
-                            st.session_state.scraped_data = combined_data.copy()
-                            
-                        # Create Excel for download
-                        buffer = io.BytesIO()
-                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                            combined_data.to_excel(writer, index=False, sheet_name='Scraped_Reviews')
-                            
-                        # Reset buffer position
-                        buffer.seek(0)
-                        
-                        # Download button 
-                        st.download_button(
-                            label="📥 Download Excel File",
-                            data=buffer,
-                            file_name=f"scraped_reviews_{main_company['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            type="primary",
-                            key="scraped_download_btn"
-                        )
-                    except Exception as e:
-                        show_error(f"Error creating Excel file: {str(e)}")
+                    # Store scraped data for later analysis
+                    if st.session_state.scraped_data is None:
+                        st.session_state.scraped_data = combined_data.copy()
                     
                     # Display next steps with side-by-side buttons
                     st.markdown("---")
@@ -453,38 +427,46 @@ with main_tab1:
                     col1, col2 = st.columns(2)
                     
                     with col1:
-                        # Download button (no routing change)
-                        if 'download_clicked' not in st.session_state:
-                            st.session_state.download_clicked = False
-                        
-                        if st.button("📥 Download Excel", key="download_excel_btn", use_container_width=True):
-                            st.session_state.download_clicked = True
-                            st.success("✅ Download completed! You can still proceed to analysis.")
+                        # Download Excel button with embedded download functionality
+                        try:
+                            # Create Excel for download
+                            buffer = io.BytesIO()
+                            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                                combined_data.to_excel(writer, index=False, sheet_name='Scraped_Reviews')
+                            buffer.seek(0)
+                            
+                            # Download button that stays on same screen
+                            st.download_button(
+                                label="📥 Download Excel",
+                                data=buffer,
+                                file_name=f"scraped_reviews_{main_company['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                key="download_excel_final_btn",
+                                use_container_width=True
+                            )
+                        except Exception as e:
+                            st.error(f"Error creating Excel file: {str(e)}")
                     
                     with col2:
                         # Next button (routes to Analysis tab)
                         if st.button("➡️ Next", key="next_to_analysis_btn", type="primary", use_container_width=True):
                             show_error("")  # Clear any previous errors
-                            # Switch to analysis tab and ensure data is preserved
+                            # Store data and navigate to analysis
+                            st.session_state.df = combined_data.copy()
                             st.session_state.current_tab = "analysis"
-                            # Make sure the data is available for analysis
-                            if st.session_state.df is None and st.session_state.scraped_data is not None:
-                                st.session_state.df = st.session_state.scraped_data
                             st.success("🚀 Moving to Analysis tab...")
-                            # Use js to click the Analysis Results tab
-                            js = f"""
+                            # Use JavaScript to click the Analysis Results tab (index 1)
+                            js_code = """
                             <script>
-                                function sleep(ms) {{
-                                    return new Promise(resolve => setTimeout(resolve, ms));
-                                }}
-                                async function clickTab() {{
-                                    await sleep(100);
-                                    document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
-                                }}
-                                clickTab();
+                                setTimeout(function() {
+                                    const tabs = document.querySelectorAll('button[data-baseweb="tab"]');
+                                    if (tabs && tabs[1]) {
+                                        tabs[1].click();
+                                    }
+                                }, 200);
                             </script>
                             """
-                            st.markdown(js, unsafe_allow_html=True)
+                            st.markdown(js_code, unsafe_allow_html=True)
                             st.rerun()
                 
                 else:
