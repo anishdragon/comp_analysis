@@ -64,17 +64,34 @@ def show_error(error_message):
 
 # Sidebar for configurations
 with st.sidebar:
+    st.header("🔑 API Configuration")
+    
+    # Always show API key input
+    anthropic_api_key = st.text_input(
+        "Anthropic API Key",
+        type="password",
+        value=st.session_state.anthropic_api_key,
+        help="Enter your Anthropic API key for AI analysis",
+        placeholder="sk-ant-..."
+    )
+    
+    if anthropic_api_key:
+        st.session_state.anthropic_api_key = anthropic_api_key
+        st.success("✅ API key configured!")
+    else:
+        st.warning("⚠️ API key needed for AI analysis")
+    
+    st.markdown("---")
+    st.markdown("### 📋 How to get your API key:")
+    st.markdown("1. Visit [Anthropic Console](https://console.anthropic.com/)")
+    st.markdown("2. Create an account or sign in") 
+    st.markdown("3. Generate a new API key")
+    st.markdown("4. Copy and paste it above")
+    
     st.header("⚙️ Configuration")
     
-    # Only show API key input when on analysis tab or when analysis is needed
+    # Show helpful info
     if st.session_state.current_tab == "analysis":
-        # Anthropic API Key input
-        st.subheader("🔑 API Key (Required for Analysis)")
-        anthropic_key = st.text_input("Enter Anthropic API Key", value=st.session_state.anthropic_api_key, type="password", key="api_key_sidebar")
-        if anthropic_key != st.session_state.anthropic_api_key:
-            st.session_state.anthropic_api_key = anthropic_key
-            os.environ["ANTHROPIC_API_KEY"] = anthropic_key
-        
         st.info("💡 Anthropic Claude will analyze your reviews and provide detailed insights including emotions and urgency levels.")
     else:
         st.info("💡 API key not required for data scraping or uploading. You'll need it when you start analysis.")
