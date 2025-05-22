@@ -156,7 +156,7 @@ with st.sidebar:
 st.markdown("---")
 
 # Create main navigation tabs
-tab_names = ["🔍 Data Sourcing", "📊 Analysis Results", "📈 Visualizations", "📚 Knowledge Base"]
+tab_names = ["🔍 Data Sourcing", "📊 Analysis", "📈 Visualizations", "📚 Knowledge Base"]
 main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs(tab_names)
 
 # Handle tab navigation based on session state
@@ -417,57 +417,31 @@ with main_tab1:
                     # Store scraped data for later analysis
                     if st.session_state.scraped_data is None:
                         st.session_state.scraped_data = combined_data.copy()
+                        st.session_state.df = combined_data.copy()  # Make data available for analysis
                     
-                    # Display next steps with side-by-side buttons
+                    # Simple download option and completion message
                     st.markdown("---")
-                    st.markdown("### 📊 What's Next?")
-                    st.info("Your data has been successfully collected! You can download it or proceed to analysis.")
+                    st.success("✅ **Data collection completed successfully!**")
+                    st.info("📍 **The data is available for further analysis, go to 'Analysis' tab for further processing.**")
                     
-                    # Create two columns for side-by-side buttons
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        # Download Excel button with embedded download functionality
-                        try:
-                            # Create Excel for download
-                            buffer = io.BytesIO()
-                            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                                combined_data.to_excel(writer, index=False, sheet_name='Scraped_Reviews')
-                            buffer.seek(0)
-                            
-                            # Download button that stays on same screen
-                            st.download_button(
-                                label="📥 Download Excel",
-                                data=buffer,
-                                file_name=f"scraped_reviews_{main_company['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key="download_excel_final_btn",
-                                use_container_width=True
-                            )
-                        except Exception as e:
-                            st.error(f"Error creating Excel file: {str(e)}")
-                    
-                    with col2:
-                        # Next button (routes to Analysis tab)
-                        if st.button("➡️ Next", key="next_to_analysis_btn", type="primary", use_container_width=True):
-                            show_error("")  # Clear any previous errors
-                            # Store data and navigate to analysis
-                            st.session_state.df = combined_data.copy()
-                            st.session_state.current_tab = "analysis"
-                            st.success("🚀 Moving to Analysis tab...")
-                            # Use JavaScript to click the Analysis Results tab (index 1)
-                            js_code = """
-                            <script>
-                                setTimeout(function() {
-                                    const tabs = document.querySelectorAll('button[data-baseweb="tab"]');
-                                    if (tabs && tabs[1]) {
-                                        tabs[1].click();
-                                    }
-                                }, 200);
-                            </script>
-                            """
-                            st.markdown(js_code, unsafe_allow_html=True)
-                            st.rerun()
+                    # Simple download button
+                    try:
+                        # Create Excel for download
+                        buffer = io.BytesIO()
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            combined_data.to_excel(writer, index=False, sheet_name='Scraped_Reviews')
+                        buffer.seek(0)
+                        
+                        # Download button - no page refresh/routing
+                        st.download_button(
+                            label="📥 Download Scraped Data",
+                            data=buffer,
+                            file_name=f"scraped_reviews_{main_company['name']}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="download_scraped_data_btn"
+                        )
+                    except Exception as e:
+                        st.error(f"Error creating Excel file: {str(e)}")
                 
                 else:
                     with overall_status:
@@ -514,27 +488,9 @@ with main_tab1:
                         st.markdown("### 👀 Data Preview")
                         st.dataframe(df.head(), use_container_width=True)
                         
-                        # Show analyze button with unique key to avoid duplicate widget errors
-                        if st.button("🔍 Analyze Uploaded Data", key="upload_analyze_btn", type="primary", use_container_width=True):
-                            show_error("")  # Clear any previous errors
-                            # Switch to analysis tab
-                            st.session_state.current_tab = "analysis"
-                            st.success("🚀 Switching to analysis tab with your uploaded data...")
-                            # Use js to click the Analysis Results tab
-                            js = f"""
-                            <script>
-                                function sleep(ms) {{
-                                    return new Promise(resolve => setTimeout(resolve, ms));
-                                }}
-                                async function clickTab() {{
-                                    await sleep(100);
-                                    document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
-                                }}
-                                clickTab();
-                            </script>
-                            """
-                            st.markdown(js, unsafe_allow_html=True)
-                            st.rerun()
+                        # Simple completion message
+                        st.success("✅ **File uploaded successfully!**")
+                        st.info("📍 **The data is available for further analysis, go to 'Analysis' tab for further processing.**")
                     
                 except Exception as e:
                     show_error(f"Error processing file: {str(e)}")
