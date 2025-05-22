@@ -451,32 +451,28 @@ with main_tab1:
                     
                     # Show analyze button with a unique key to avoid duplicate widgets
                     if st.button("🔍 Analyze Scraped Data", key="scraped_analyze_btn", type="primary", use_container_width=True):
-                        # Check if Anthropic API key is available
-                        if not st.session_state.anthropic_api_key:
-                            show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
-                        else:
-                            show_error("")  # Clear any previous errors
-                            # Switch to analysis tab and ensure data is preserved
-                            st.session_state.current_tab = "analysis"
-                            # Make sure the data is available for analysis
-                            if st.session_state.df is None and st.session_state.scraped_data is not None:
-                                st.session_state.df = st.session_state.scraped_data
-                            st.success("🚀 Starting analysis of scraped data...")
-                            # Use js to click the Analysis Results tab
-                            js = f"""
-                            <script>
-                                function sleep(ms) {{
-                                    return new Promise(resolve => setTimeout(resolve, ms));
-                                }}
-                                async function clickTab() {{
-                                    await sleep(100);
-                                    document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
-                                }}
-                                clickTab();
-                            </script>
-                            """
-                            st.markdown(js, unsafe_allow_html=True)
-                            st.rerun()
+                        show_error("")  # Clear any previous errors
+                        # Switch to analysis tab and ensure data is preserved
+                        st.session_state.current_tab = "analysis"
+                        # Make sure the data is available for analysis
+                        if st.session_state.df is None and st.session_state.scraped_data is not None:
+                            st.session_state.df = st.session_state.scraped_data
+                        st.success("🚀 Switching to analysis tab with your scraped data...")
+                        # Use js to click the Analysis Results tab
+                        js = f"""
+                        <script>
+                            function sleep(ms) {{
+                                return new Promise(resolve => setTimeout(resolve, ms));
+                            }}
+                            async function clickTab() {{
+                                await sleep(100);
+                                document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
+                            }}
+                            clickTab();
+                        </script>
+                        """
+                        st.markdown(js, unsafe_allow_html=True)
+                        st.rerun()
                 
                 else:
                     with overall_status:
@@ -525,29 +521,25 @@ with main_tab1:
                         
                         # Show analyze button with unique key to avoid duplicate widget errors
                         if st.button("🔍 Analyze Uploaded Data", key="upload_analyze_btn", type="primary", use_container_width=True):
-                            # Check if Anthropic API key is available
-                            if not st.session_state.anthropic_api_key:
-                                show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
-                            else:
-                                show_error("")  # Clear any previous errors
-                                # Switch to analysis tab
-                                st.session_state.current_tab = "analysis"
-                                st.success("🚀 Starting analysis of uploaded data...")
-                                # Use js to click the Analysis Results tab
-                                js = f"""
-                                <script>
-                                    function sleep(ms) {{
-                                        return new Promise(resolve => setTimeout(resolve, ms));
-                                    }}
-                                    async function clickTab() {{
-                                        await sleep(100);
-                                        document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
-                                    }}
-                                    clickTab();
-                                </script>
-                                """
-                                st.markdown(js, unsafe_allow_html=True)
-                                st.rerun()
+                            show_error("")  # Clear any previous errors
+                            # Switch to analysis tab
+                            st.session_state.current_tab = "analysis"
+                            st.success("🚀 Switching to analysis tab with your uploaded data...")
+                            # Use js to click the Analysis Results tab
+                            js = f"""
+                            <script>
+                                function sleep(ms) {{
+                                    return new Promise(resolve => setTimeout(resolve, ms));
+                                }}
+                                async function clickTab() {{
+                                    await sleep(100);
+                                    document.querySelectorAll('button[data-baseweb="tab"]')[1].click();
+                                }}
+                                clickTab();
+                            </script>
+                            """
+                            st.markdown(js, unsafe_allow_html=True)
+                            st.rerun()
                     
                 except Exception as e:
                     show_error(f"Error processing file: {str(e)}")
@@ -648,103 +640,104 @@ with main_tab2:
         
         # Check if data has been analyzed already
         if st.session_state.analyzed_data is None:
-            # First check if Anthropic API key is available
-            if not st.session_state.anthropic_api_key:
-                show_error("Anthropic API key is required for analysis. Please enter it in the sidebar.")
-            # Button to start analysis
-            elif st.button("🔍 Start Analysis", key="start_analysis_btn", type="primary", use_container_width=True):
-                # Clear any previous errors
-                show_error("")
-                with st.spinner("Analyzing reviews. This may take a few minutes..."):
-                    # Create progress bar
-                    progress_bar = st.progress(0)
-                    
-                    # Process each review
-                    analyzed_data = []
-                    categories = {
-                        'sentiment': [],
-                        'aspect': [],
-                        'issue_type': [],
-                        'emotion': [],
-                        'urgency': []
-                    }
-                    
-                    total_rows = len(st.session_state.df)
-                    
-                    for idx, row in st.session_state.df.iterrows():
-                        # Update progress
-                        progress_bar.progress((idx + 1) / total_rows)
+            # Show analysis start button (API key check happens when clicked)
+            if st.button("🔍 Start Analysis", key="start_analysis_btn", type="primary", use_container_width=True):
+                # NOW check if Anthropic API key is available
+                if not st.session_state.anthropic_api_key:
+                    show_error("Anthropic API key is required for analysis. Please enter it in the sidebar.")
+                else:
+                    # Clear any previous errors
+                    show_error("")
+                    with st.spinner("Analyzing reviews. This may take a few minutes..."):
+                        # Create progress bar
+                        progress_bar = st.progress(0)
                         
-                        # Extract review content
-                        review_content = row['review_content']
-                        review_title = row.get('review_title', '')
-                        rating = row.get('rating', None)
+                        # Process each review
+                        analyzed_data = []
+                        categories = {
+                            'sentiment': [],
+                            'aspect': [],
+                            'issue_type': [],
+                            'emotion': [],
+                            'urgency': []
+                        }
                         
-                        # Skip empty reviews with proper type checking
-                        if pd.isna(review_content) or (isinstance(review_content, str) and review_content.strip() == ""):
-                            continue
+                        total_rows = len(available_data)
                         
-                        # Store analysis errors to display only once at the end
-                        if 'analysis_errors' not in st.session_state:
-                            st.session_state.analysis_errors = []
+                        for idx, row in available_data.iterrows():
+                            # Update progress
+                            progress_bar.progress((idx + 1) / total_rows)
                             
-                        # Use Anthropic Claude for analysis  
-                        try:
-                            # Check if Anthropic API key is provided
-                            if not st.session_state.anthropic_api_key:
-                                show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
-                                break
+                            # Extract review content
+                            review_content = row['review_content']
+                            review_title = row.get('review_title', '')
+                            rating = row.get('rating', None)
                             
-                            # Use Anthropic Claude
-                            result = analyze_review(review_content, review_title, rating)
+                            # Skip empty reviews with proper type checking
+                            if pd.isna(review_content) or (isinstance(review_content, str) and review_content.strip() == ""):
+                                continue
                             
-                            # Add results to the analyzed data
-                            result_with_metadata = {
-                                **row.to_dict(),
-                                **result
-                            }
-                            analyzed_data.append(result_with_metadata)
-                            
-                            # Update categories
-                            categories['sentiment'].append(result['sentiment'])
-                            categories['aspect'].append(result['aspect'])
-                            categories['issue_type'].append(result['issue_type'])
-                            # Ensure keys exist before accessing
-                            if 'emotion' in result:
-                                categories['emotion'].append(result['emotion'])
-                            else:
-                                categories['emotion'].append('Neutral')
+                            # Store analysis errors to display only once at the end
+                            if 'analysis_errors' not in st.session_state:
+                                st.session_state.analysis_errors = []
                                 
-                            if 'urgency' in result:
-                                categories['urgency'].append(result['urgency'])
-                            else:
+                            # Use Anthropic Claude for analysis  
+                            try:
+                                # Check if Anthropic API key is provided
+                                if not st.session_state.anthropic_api_key:
+                                    show_error("Please enter your Anthropic API key in the sidebar before analyzing.")
+                                    break
+                                
+                                # Use Anthropic Claude
+                                result = analyze_review(review_content, review_title, rating)
+                                
+                                # Add results to the analyzed data
+                                result_with_metadata = {
+                                    **row.to_dict(),
+                                    **result
+                                }
+                                analyzed_data.append(result_with_metadata)
+                                
+                                # Update categories
+                                categories['sentiment'].append(result['sentiment'])
+                                categories['aspect'].append(result['aspect'])
+                                categories['issue_type'].append(result['issue_type'])
+                                # Ensure keys exist before accessing
+                                if 'emotion' in result:
+                                    categories['emotion'].append(result['emotion'])
+                                else:
+                                    categories['emotion'].append('Neutral')
+                                    
+                                if 'urgency' in result:
+                                    categories['urgency'].append(result['urgency'])
+                                else:
+                                    categories['urgency'].append('Medium')
+                                
+                            except Exception as e:
+                                # Add error to collection
+                                error_msg = str(e)
+                                if error_msg not in st.session_state.analysis_errors:
+                                    st.session_state.analysis_errors.append(error_msg)
+                                
+                                # Create a default result for this row
+                                default_result = {
+                                    **row.to_dict(),
+                                    'sentiment': 'Neutral',
+                                    'sentiment_score': 0.0,
+                                    'aspect': 'Other',
+                                    'issue_type': 'General Feedback',
+                                    'emotion': 'Neutral',
+                                    'urgency': 'Medium',
+                                    'confidence': 0.5
+                                }
+                                analyzed_data.append(default_result)
+                                
+                                # Update categories with default values
+                                categories['sentiment'].append('Neutral')
+                                categories['aspect'].append('Other')
+                                categories['issue_type'].append('General Feedback')
+                                categories['emotion'].append('Neutral')
                                 categories['urgency'].append('Medium')
-                            
-                        except Exception as e:
-                            # Add error to collection
-                            error_msg = str(e)
-                            if error_msg not in st.session_state.analysis_errors:
-                                st.session_state.analysis_errors.append(error_msg)
-                            
-                            # Create a default result for this row
-                            default_result = {
-                                **row.to_dict(),
-                                'sentiment': 'Neutral',
-                                'sentiment_score': 0.0,
-                                'aspect': 'Other',
-                                'issue_type': 'General Feedback',
-                                'emotion': 'Neutral',
-                                'urgency': 'Medium',
-                                'confidence': 0.5
-                            }
-                            analyzed_data.append(default_result)
-                            
-                            # Update categories with default values
-                            categories['sentiment'].append('Neutral')
-                            categories['aspect'].append('Other')
-                            categories['issue_type'].append('General Feedback')
-                            categories['emotion'].append('Neutral')
-                            categories['urgency'].append('Medium')
                             
                     # Store analyzed data and categories in session state
                     st.session_state.analyzed_data = analyzed_data
