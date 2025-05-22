@@ -374,224 +374,190 @@ with main_tab1:
             st.session_state.df = None
             st.rerun()
         
-        # File upload section
-        st.markdown("### 📤 Upload Your Review Data")
-        uploaded_file = st.file_uploader("Choose an Excel file", type=['xlsx', 'xls'])
+        # Structure the upload interface with tabs
+        upload_tab1, upload_tab2 = st.tabs(["📤 Upload Your Data", "📋 Sample File Format"])
         
-        if uploaded_file is not None:
-            try:
-                # Process the uploaded file
-                df, error_msg = process_excel_file(uploaded_file)
-                
-                if error_msg:
-                    st.error(f"❌ Error processing file: {error_msg}")
-                else:
-                    st.session_state.df = df
-                    st.success(f"✅ File uploaded successfully! Found {len(df)} reviews")
+        # Tab 1: File Upload Section
+        with upload_tab1:
+            st.markdown("### 📤 Upload Your Review Data")
+            st.info("Upload an Excel file containing your review data. The file should have columns for review content, usernames, dates, and ratings.")
+            
+            # File uploader with unique key
+            uploaded_file = st.file_uploader("Choose an Excel file", type=['xlsx', 'xls'], key="data_upload_tab")
+            
+            if uploaded_file is not None:
+                try:
+                    # Process the uploaded file
+                    df, error_msg = process_excel_file(uploaded_file)
                     
-                    # Show data preview
-                    st.markdown("### 👀 Data Preview")
-                    st.dataframe(df.head(), use_container_width=True)
+                    if error_msg:
+                        st.error(f"❌ Error processing file: {error_msg}")
+                    else:
+                        st.session_state.df = df
+                        st.success(f"✅ File uploaded successfully! Found {len(df)} reviews")
+                        
+                        # Show data preview
+                        st.markdown("### 👀 Data Preview")
+                        st.dataframe(df.head(), use_container_width=True)
+                        
+                        # Show analyze button
+                        if st.button("🔍 Analyze Uploaded Data", type="primary", use_container_width=True):
+                            st.success("🚀 Starting analysis of uploaded data...")
+                            st.rerun()
                     
-                    # Show analyze button
-                    if st.button("🔍 Analyze Uploaded Data", type="primary", use_container_width=True):
-                        st.success("🚀 Starting analysis of uploaded data...")
-                        st.rerun()
-                    
-            except Exception as e:
-                st.error(f"❌ Error processing file: {str(e)}")
+                except Exception as e:
+                    st.error(f"❌ Error processing file: {str(e)}")
         
-        # Show sample file download
-        st.markdown("### 📋 Sample File Format")
-        st.info("Your Excel file should contain columns for review content, usernames, dates, and ratings. Download our sample file to see the expected format.")
-        
-        # Create sample data
-        sample_data = pd.DataFrame({
-            'username': ['user1', 'user2', 'user3'],
-            'review_content': [
-                'Great app, love the features!',
-                'Could be better, has some bugs',
-                'Excellent customer service and easy to use'
-            ],
-            'rating': [5, 3, 4],
-            'datetime': ['2024-01-01', '2024-01-02', '2024-01-03'],
-            'review_title': ['Love it!', 'Needs work', 'Great experience']
-        })
-        
-        # Convert sample to Excel for download
-        sample_output = io.BytesIO()
-        with pd.ExcelWriter(sample_output, engine='xlsxwriter') as writer:
-            sample_data.to_excel(writer, index=False, sheet_name='Sample_Reviews')
-        
-        st.download_button(
-            label="📥 Download Sample Excel File",
-            data=sample_output.getvalue(),
-            file_name="sample_review_format.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    
-    # Create a sample file for download
-    col1, col2 = st.columns([1, 2])
-    with col1:
-        if st.button("Download Sample File"):
-            # Create sample data
-            sample_data = {
-                "Date": ["2023-01-15", "2023-01-16", "2023-01-17", "2023-01-18", "2023-01-19"],
-                "Username": ["Customer1", "Customer2", "Customer3", "Customer4", "Customer5"],
-                "Review Content": [
-                    "Product received was broken on arrival. The box was also damaged during shipping.",
-                    "Support team was helpful and resolved my issue within minutes. Very satisfied!",
-                    "Order took 5 days longer than promised with no updates or explanation.",
-                    "Excellent quality and meets all specifications. Will order again in the future.",
-                    "Mobile application constantly crashes when trying to complete checkout process."
-                ],
-                "Review Date": ["2023-01-15", "2023-01-16", "2023-01-17", "2023-01-18", "2023-01-19"],
-                "Review Title": ["Broken Item", "Great Support", "Shipping Delay", "Perfect Product", "App Issues"],
-                "Rating": [1, 5, 2, 5, 2]
+        # Tab 2: Sample File Format
+        with upload_tab2:
+            st.markdown("### 📋 Sample File Format")
+            st.info("Your Excel file should contain the following columns:")
+            
+            # Show required columns and their descriptions
+            col_info = {
+                "username": "The name or ID of the user who left the review",
+                "review_content": "The actual text content of the review",
+                "datetime": "The date and time when the review was posted (YYYY-MM-DD format)",
+                "rating": "Numerical rating (e.g., 1-5 stars)",
+                "review_title": "(Optional) Title of the review if available",
+                "source": "(Optional) Source of the review (e.g., App Store, Website)",
+                "company": "(Optional) Company name if including multiple companies"
             }
             
-            # Create DataFrame
-            sample_df = pd.DataFrame(sample_data)
+            for col, desc in col_info.items():
+                st.markdown(f"**{col}**: {desc}")
             
-            # Convert to Excel
-            buffer = io.BytesIO()
-            sample_df.to_excel(buffer, index=False, engine='openpyxl')
-            buffer.seek(0)
+            # Create sample data
+            sample_data = pd.DataFrame({
+                'username': ['user1', 'user2', 'user3', 'user4', 'user5'],
+                'review_content': [
+                    'Great app, love the features!',
+                    'Could be better, has some bugs that need fixing.',
+                    'Excellent customer service and easy to use interface.',
+                    'App crashes frequently when trying to make a purchase.',
+                    'Product arrived damaged, but customer service resolved it quickly.'
+                ],
+                'datetime': ['2024-01-01', '2024-01-02', '2024-01-03', '2024-01-04', '2024-01-05'],
+                'rating': [5, 2, 4, 1, 3],
+                'review_title': ['Love it!', 'Needs work', 'Great experience', 'Constant crashes', 'Mixed experience'],
+                'source': ['App Store', 'Website', 'App Store', 'Google Play', 'Website'],
+                'company': ['Company A', 'Company A', 'Company B', 'Company A', 'Company B']
+            })
             
-            # Create download button
-            b64 = base64.b64encode(buffer.read()).decode()
-            href = f'<a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}" download="sample_reviews.xlsx">Click here to download the sample file</a>'
-            st.markdown(href, unsafe_allow_html=True)
-    
-    with col2:
-        st.info("""
-        **Expected columns in your Excel file:**
-        
-        **Required columns:**
-        - Date/datetime (e.g., Date, Timestamp, Created At)
-        - Username (e.g., User, Customer, Name)
-        - Review Content (e.g., Review, Feedback, Comments)
-        
-        **Optional columns:**
-        - Review Date (e.g., Review Timestamp, Feedback Date)
-        - Review Title (e.g., Title, Subject, Heading)
-        - Rating (e.g., Score, Stars, Satisfaction)
-        """)
-    
-    # Excel file uploader
-    uploaded_file = st.file_uploader("Choose an Excel file", type=['xlsx', 'xls'])
-    
-    if uploaded_file is not None:
-        # Process the uploaded Excel file
-        try:
-            df, error_msg = process_excel_file(uploaded_file)
+            # Show sample data
+            st.markdown("### Sample Data Preview")
+            st.dataframe(sample_data, use_container_width=True)
             
-            if error_msg:
-                st.error(error_msg)
-            else:
-                # Store the DataFrame in session state
-                st.session_state.df = df
-                
-                # Display the uploaded data
-                st.subheader("Uploaded Data")
-                st.dataframe(df, use_container_width=True)
-                
-                # Button to analyze the data
-                if st.button("Analyze Reviews"):
-                    # Check API key based on selected service
-                    api_key_missing = False
-                    if st.session_state.ai_service == "anthropic" and not st.session_state.anthropic_api_key:
-                        st.error("Please enter your Anthropic API key in the sidebar before analyzing.")
-                        api_key_missing = True
-                    elif st.session_state.ai_service == "openai" and not st.session_state.openai_api_key:
-                        st.error("Please enter your OpenAI API key in the sidebar before analyzing.")
-                        api_key_missing = True
+            # Create Excel file in memory for download
+            sample_output = io.BytesIO()
+            with pd.ExcelWriter(sample_output, engine='xlsxwriter') as writer:
+                sample_data.to_excel(writer, index=False, sheet_name='Sample_Reviews')
+            
+            # Download button
+            st.download_button(
+                label="📥 Download Sample Excel File",
+                data=sample_output.getvalue(),
+                file_name="sample_review_format.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=True
+            )
+    
+    # Analysis tab - begins here
+
+# Tab 2: Analysis Results
+with main_tab2:
+    st.header("📊 Analysis Results")
+    
+    if st.session_state.df is not None and st.session_state.anthropic_api_key:
+        # Check if data has been analyzed already
+        if st.session_state.analyzed_data is None:
+            # Button to start analysis
+            if st.button("🔍 Start Analysis", type="primary", use_container_width=True):
+                with st.spinner("Analyzing reviews. This may take a few minutes..."):
+                    # Create progress bar
+                    progress_bar = st.progress(0)
+                    
+                    # Process each review
+                    analyzed_data = []
+                    categories = {
+                        'sentiment': [],
+                        'aspect': [],
+                        'issue_type': [],
+                        'emotion': [],
+                        'urgency': []
+                    }
+                    
+                    total_rows = len(st.session_state.df)
+                    
+                    for idx, row in st.session_state.df.iterrows():
+                        # Update progress
+                        progress_bar.progress((idx + 1) / total_rows)
                         
-                    if not api_key_missing:
-                        with st.spinner("Analyzing reviews. This may take a few minutes..."):
-                            # Create progress bar
-                            progress_bar = st.progress(0)
+                        # Extract review content
+                        review_content = row['review_content']
+                        review_title = row.get('review_title', '')
+                        rating = row.get('rating', None)
+                        
+                        # Skip empty reviews
+                        if pd.isna(review_content) or review_content.strip() == "":
+                            continue
+                        
+                        # Use Anthropic Claude for analysis
+                        try:
+                            # Check if Anthropic API key is provided
+                            if not st.session_state.anthropic_api_key:
+                                st.error("Please enter your Anthropic API key in the sidebar before analyzing.")
+                                break
                             
-                            # Process each review
-                            analyzed_data = []
-                            categories = {
-                                'sentiment': [],
-                                'aspect': [],
-                                'issue_type': []
+                            # Use Anthropic Claude
+                            result = analyze_review(review_content, review_title, rating)
+                            
+                            # Add results to the analyzed data
+                            result_with_metadata = {
+                                **row.to_dict(),
+                                **result
                             }
+                            analyzed_data.append(result_with_metadata)
                             
-                            total_rows = len(df)
+                            # Update categories
+                            categories['sentiment'].append(result['sentiment'])
+                            categories['aspect'].append(result['aspect'])
+                            categories['issue_type'].append(result['issue_type'])
+                            categories['emotion'].append(result['emotion'])
+                            categories['urgency'].append(result['urgency'])
                             
-                            for idx, row in df.iterrows():
-                                # Update progress
-                                progress_bar.progress((idx + 1) / total_rows)
-                                
-                                # Extract review content
-                                review_content = row['review_content']
-                                review_title = row.get('review_title', '')
-                                rating = row.get('rating', None)
-                                
-                                # Skip empty reviews
-                                if pd.isna(review_content) or review_content.strip() == "":
-                                    continue
-                                
-                                # Use Anthropic Claude for analysis
+                        except Exception as e:
+                            st.error(f"Error analyzing review: {str(e)}")
+                            
+                    # Store analyzed data and categories in session state
+                    st.session_state.analyzed_data = analyzed_data
+                    st.session_state.categories = categories
+                    
+                    # Generate knowledge base summaries
+                    with st.spinner("Generating knowledge base summaries..."):
+                        knowledge_base = {}
+                        
+                        # Group by issue type
+                        issue_types = list(set(categories['issue_type']))
+                        
+                        for issue_type in issue_types:
+                            # Get all reviews for this issue type
+                            issue_reviews = [data['review_content'] for data in analyzed_data 
+                                            if data['issue_type'] == issue_type]
+                            
+                            if issue_reviews:
                                 try:
-                                    # Check if Anthropic API key is provided
-                                    if not st.session_state.anthropic_api_key:
-                                        st.error("Please enter your Anthropic API key in the sidebar before analyzing.")
-                                        break
-                                    
-                                    # Use Anthropic Claude
-                                    result = analyze_review(review_content, review_title, rating)
-                                    
-                                    # Add results to the analyzed data
-                                    result_with_metadata = {
-                                        **row.to_dict(),
-                                        **result
-                                    }
-                                    analyzed_data.append(result_with_metadata)
-                                    
-                                    # Update categories
-                                    categories['sentiment'].append(result['sentiment'])
-                                    categories['aspect'].append(result['aspect'])
-                                    categories['issue_type'].append(result['issue_type'])
-                                    
+                                    # Use Anthropic Claude for summarization
+                                    summary = generate_category_summary(issue_type, issue_reviews)
+                                    knowledge_base[issue_type] = summary
                                 except Exception as e:
-                                    st.error(f"Error analyzing review: {str(e)}")
-                            
-                            # Store analyzed data and categories
-                            st.session_state.analyzed_data = analyzed_data
-                            st.session_state.categories = categories
-                            
-                            # Generate knowledge base summaries
-                            with st.spinner("Generating knowledge base summaries..."):
-                                knowledge_base = {}
-                                
-                                # Group by issue type
-                                issue_types = list(set(categories['issue_type']))
-                                
-                                for issue_type in issue_types:
-                                    # Get all reviews for this issue type
-                                    issue_reviews = [data['review_content'] for data in analyzed_data 
-                                                    if data['issue_type'] == issue_type]
-                                    
-                                    if issue_reviews:
-                                        # Generate summary for this issue type
-                                        try:
-                                            # Use Anthropic Claude for summarization
-                                            summary = generate_category_summary(issue_type, issue_reviews)
-                                                
-                                            knowledge_base[issue_type] = summary
-                                        except Exception as e:
-                                            st.error(f"Error generating summary for {issue_type}: {str(e)}")
-                                
-                                st.session_state.knowledge_base = knowledge_base
-                            
-                            st.success("Analysis complete!")
-        
-        except Exception as e:
-            st.error(f"Error processing file: {str(e)}")
+                                    st.error(f"Error generating summary for {issue_type}: {str(e)}")
+                        
+                        # Store knowledge base in session state
+                        st.session_state.knowledge_base = knowledge_base
+                        
+                        st.success("✅ Analysis complete! Check the Analysis Results tab to see the insights.")
 
 # Tab 2: Analysis Results  
 with main_tab2:
