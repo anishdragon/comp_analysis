@@ -175,7 +175,16 @@ class GooglePlayReviewsScraper:
                         cleaned_review['review_title'] = cleaned_review.get('title', '')
                         cleaned_review['rating'] = cleaned_review.get('score', None)
                         cleaned_review['username'] = cleaned_review.get('userName', '')
-                        cleaned_review['datetime'] = cleaned_review.get('at', '')
+                        # Convert datetime to string to avoid Arrow serialization issues
+                        at_value = cleaned_review.get('at', '')
+                        if at_value:
+                            try:
+                                # Convert datetime object to string if needed
+                                cleaned_review['datetime'] = str(at_value)
+                            except:
+                                cleaned_review['datetime'] = str(at_value)
+                        else:
+                            cleaned_review['datetime'] = ''
                         
                         cleaned_batch.append(cleaned_review)
                     
