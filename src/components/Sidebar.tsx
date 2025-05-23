@@ -29,6 +29,7 @@ const SidebarContent = () => {
     { name: 'Analysis', path: '/analysis', icon: BarChart3, color: 'from-purple-500 to-purple-600' },
     { name: 'Knowledge Base', path: '/knowledge-base', icon: BookOpen, color: 'from-orange-500 to-orange-600' },
     { name: 'Reviews', path: '/reviews', icon: MessageSquare, color: 'from-pink-500 to-pink-600' },
+    { name: 'Showcase', path: '/showcase', icon: TrendingUp, color: 'from-cyan-500 to-cyan-600' },
     { name: 'Settings', path: '/settings', icon: Settings, color: 'from-gray-500 to-gray-600' }
   ]
 
