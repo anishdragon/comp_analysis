@@ -1,7 +1,6 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, AlertTriangle, Info, Download } from 'lucide-react'
-import toast from 'react-hot-toast'
+import { ArrowLeft, AlertTriangle, Info } from 'lucide-react'
 
 const ScrapeData: React.FC = () => {
   const navigate = useNavigate()
@@ -15,8 +14,6 @@ const ScrapeData: React.FC = () => {
     ecommerceReviews: 100
   })
   const [validationError, setValidationError] = useState('')
-  const [isScrapingInProgress, setIsScrapingInProgress] = useState(false)
-  const [scrapingProgress, setScrapingProgress] = useState('')
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
@@ -26,55 +23,18 @@ const ScrapeData: React.FC = () => {
     }))
   }
 
-  const handleStartScraping = async () => {
+  const handleStartScraping = () => {
     // Validation
     if (!formData.companyName) {
       setValidationError('Company name is required')
       return
     }
-    
-    if (!formData.googlePlayAppId && !formData.trustpilotUrl && !formData.ecommerceUrl) {
-      setValidationError('At least one data source must be provided')
-      return
-    }
-    
     setValidationError('')
-    setIsScrapingInProgress(true)
     
-    try {
-      const response = await fetch('http://localhost:3001/api/start-scraping', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          company_name: formData.companyName,
-          google_play_app_id: formData.googlePlayAppId,
-          trustpilot_url: formData.trustpilotUrl,
-          ecommerce_url: formData.ecommerceUrl,
-          google_play_reviews: formData.googlePlayReviews,
-          trustpilot_reviews: formData.trustpilotReviews,
-          ecommerce_reviews: formData.ecommerceReviews
-        })
-      })
-
-      const data = await response.json()
-      
-      if (response.ok) {
-        toast.success('Scraping completed successfully!')
-        setScrapingProgress(`Successfully scraped ${data.total_reviews || 0} reviews`)
-        // Navigate to reviews page to see the scraped data
-        setTimeout(() => navigate('/reviews'), 2000)
-      } else {
-        throw new Error(data.error || 'Scraping failed')
-      }
-    } catch (error) {
-      console.error('Scraping error:', error)
-      toast.error('Scraping failed. Please try again.')
-      setValidationError(error.message || 'Failed to start scraping')
-    } finally {
-      setIsScrapingInProgress(false)
-    }
+    // This will integrate with your Python backend scraping functionality
+    console.log('Starting scraping with config:', formData)
+    // Navigate to a scraping progress page or back to dashboard
+    navigate('/dashboard')
   }
 
   return (
@@ -271,43 +231,12 @@ const ScrapeData: React.FC = () => {
             </div>
           </div>
 
-          {/* Progress Display */}
-          {isScrapingInProgress && (
-            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600 mr-3"></div>
-                <div>
-                  <h3 className="text-sm font-medium text-blue-800">Scraping in Progress</h3>
-                  <p className="text-sm text-blue-700 mt-1">Please wait while we collect the reviews...</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Success Display */}
-          {scrapingProgress && !isScrapingInProgress && (
-            <div className="mb-6 bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-center">
-                <Download className="h-5 w-5 text-green-600 mr-2" />
-                <div>
-                  <h3 className="text-sm font-medium text-green-800">Scraping Complete</h3>
-                  <p className="text-sm text-green-700 mt-1">{scrapingProgress}</p>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Start Scraping Button */}
           <button
             onClick={handleStartScraping}
-            disabled={isScrapingInProgress}
-            className={`w-full px-6 py-3 rounded-lg font-medium transition-colors ${
-              isScrapingInProgress 
-                ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
-                : 'bg-blue-600 text-white hover:bg-blue-700'
-            }`}
+            className="w-full bg-gray-900 text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition-colors font-medium"
           >
-            {isScrapingInProgress ? 'Scraping in Progress...' : 'Start Scraping'}
+            Start Scraping
           </button>
         </div>
       </div>
