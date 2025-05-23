@@ -122,6 +122,203 @@ def start_scraping():
     except Exception as e:
         return jsonify({"error": f"Scraping failed: {str(e)}"}), 500
 
+
+@app.route('/api/scrape/company', methods=['POST'])
+def start_company_scraping():
+    try:
+        data = request.get_json()
+        companies = data.get('companies', [])
+        
+        if not companies:
+            return jsonify({'error': 'No companies provided'}), 400
+        
+        def generate_company_scraping():
+            import json
+            
+            all_reviews = []
+            all_sources = []
+            total_companies = len(companies)
+            
+            for i, company in enumerate(companies):
+                company_name = company.get('companyName', '')
+                google_play_id = company.get('googlePlayAppId', '')
+                trustpilot_url = company.get('trustpilotUrl', '')
+                max_reviews = company.get('maxReviews', 100)
+                
+                progress_data = {
+                    'currentCompany': company_name,
+                    'currentSource': 'Starting...',
+                    'progress': (i * 100) // total_companies,
+                    'totalCompanies': total_companies,
+                    'completedCompanies': i,
+                    'currentStep': f'Processing {company_name}...'
+                }
+                yield f"data: {json.dumps({'progress': progress_data})}\n\n"
+                
+                # Scrape Google Play Store reviews
+                if google_play_id:
+                    try:
+                        progress_data['currentSource'] = 'Google Play Store'
+                        progress_data['progress'] = (i * 100) // total_companies + 25
+                        progress_data['currentStep'] = f'Scraping Google Play for {company_name}...'
+                        yield f"data: {json.dumps({'progress': progress_data})}\n\n"
+                        
+                        from utils.google_play_scraper import scrape_google_play_reviews
+                        google_reviews = scrape_google_play_reviews(
+                            google_play_id, 
+                            max_reviews=max_reviews, 
+                            company_name=company_name
+                        )
+                        all_reviews.extend(google_reviews.to_dict('records'))
+                        all_sources.append({'name': f'{company_name} - Google Play Store', 'count': len(google_reviews), 'status': 'success'})
+                    except Exception as e:
+                        all_sources.append({'name': f'{company_name} - Google Play Store', 'count': 0, 'status': 'error', 'error': str(e)})
+                
+                # Scrape Trustpilot reviews
+                if trustpilot_url:
+                    try:
+                        progress_data['currentSource'] = 'Trustpilot'
+                        progress_data['progress'] = (i * 100) // total_companies + 50
+                        progress_data['currentStep'] = f'Scraping Trustpilot for {company_name}...'
+                        yield f"data: {json.dumps({'progress': progress_data})}\n\n"
+                        
+                        from utils.trustpilot_scraper import scrape_trustpilot_reviews
+                        trustpilot_reviews = scrape_trustpilot_reviews(
+                            trustpilot_url, 
+                            max_reviews=max_reviews, 
+                            company_name=company_name
+                        )
+                        all_reviews.extend(trustpilot_reviews.to_dict('records'))
+                        all_sources.append({'name': f'{company_name} - Trustpilot', 'count': len(trustpilot_reviews), 'status': 'success'})
+                    except Exception as e:
+                        all_sources.append({'name': f'{company_name} - Trustpilot', 'count': 0, 'status': 'error', 'error': str(e)})
+                
+                progress_data['currentSource'] = 'Complete'
+                progress_data['progress'] = ((i + 1) * 100) // total_companies
+                progress_data['completedCompanies'] = i + 1
+                progress_data['currentStep'] = f'Completed {company_name}'
+                yield f"data: {json.dumps({'progress': progress_data})}\n\n"
+            
+            # Final result
+            result = {
+                'reviews': all_reviews,
+                'sources': all_sources,
+                'total_reviews': len(all_reviews),
+                'success': True
+            }
+            
+            yield f"data: {json.dumps({'result': result})}\n\n"
+        
+        return Response(generate_company_scraping(), mimetype='text/plain', headers={
+            'Cache-Control': 'no-cache',
+            'Content-Type': 'text/event-stream',
+            'Access-Control-Allow-Origin': '*'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/scrape/product', methods=['POST']) 
+def start_product_scraping():
+    try:
+        data = request.get_json()
+        products = data.get('products', [])
+        
+        if not products:
+            return jsonify({'error': 'No products provided'}), 400
+        
+        def generate_product_scraping():
+            import json
+            
+            all_reviews = []
+            all_products = []
+            all_sources = []
+            total_products = len(products)
+            
+            for i, product in enumerate(products):
+                company_name = product.get('companyName', '')
+                ecommerce_url = product.get('ecommerceUrl', '')
+                search_term = product.get('searchTerm', '')
+                max_products = product.get('maxProducts', 20)
+                
+                progress_data = {
+                    'currentCompany': company_name,
+                    'currentSource': 'Searching products...',
+                    'progress': (i * 100) // total_products,
+                    'totalCompanies': total_products,
+                    'completedCompanies': i,
+                    'currentStep': f'Searching {search_term} on {company_name}...'
+                }
+                yield f"data: {json.dumps({'progress': progress_data})}\n\n"
+                
+                try:
+                    progress_data['currentSource'] = f'Scraping {search_term}'
+                    progress_data['progress'] = (i * 100) // total_products + 50
+                    progress_data['currentStep'] = f'Analyzing products for {search_term}...'
+                    yield f"data: {json.dumps({'progress': progress_data})}\n\n"
+                    
+                    from utils.ecommerce_scraper import scrape_ecommerce_reviews
+                    ecommerce_data = scrape_ecommerce_reviews(
+                        ecommerce_url, 
+                        max_products=max_products,
+                        company_name=company_name
+                    )
+                    
+                    # Separate product metadata and reviews
+                    product_meta = []
+                    reviews = []
+                    
+                    for item in ecommerce_data.to_dict('records'):
+                        if 'review_content' in item and item['review_content']:
+                            reviews.append(item)
+                        else:
+                            # Product metadata
+                            product_meta.append({
+                                'company': company_name,
+                                'search_term': search_term,
+                                'product_name': item.get('product_name', ''),
+                                'price': item.get('price', ''),
+                                'discount': item.get('discount', ''),
+                                'rating': item.get('rating', ''),
+                                'reviews_count': item.get('reviews_count', ''),
+                                'url': item.get('url', '')
+                            })
+                    
+                    all_reviews.extend(reviews)
+                    all_products.extend(product_meta)
+                    all_sources.append({'name': f'{company_name} - {search_term}', 'count': len(reviews), 'products': len(product_meta), 'status': 'success'})
+                    
+                except Exception as e:
+                    all_sources.append({'name': f'{company_name} - {search_term}', 'count': 0, 'products': 0, 'status': 'error', 'error': str(e)})
+                
+                progress_data['currentSource'] = 'Complete'
+                progress_data['progress'] = ((i + 1) * 100) // total_products
+                progress_data['completedCompanies'] = i + 1
+                progress_data['currentStep'] = f'Completed {company_name}'
+                yield f"data: {json.dumps({'progress': progress_data})}\n\n"
+            
+            # Final result
+            result = {
+                'reviews': all_reviews,
+                'products': all_products,
+                'sources': all_sources,
+                'total_reviews': len(all_reviews),
+                'total_products': len(all_products),
+                'success': True
+            }
+            
+            yield f"data: {json.dumps({'result': result})}\n\n"
+        
+        return Response(generate_product_scraping(), mimetype='text/plain', headers={
+            'Cache-Control': 'no-cache',
+            'Content-Type': 'text/event-stream',
+            'Access-Control-Allow-Origin': '*'
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/analyze', methods=['POST'])
 def analyze_reviews():
     try:
