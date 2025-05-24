@@ -612,9 +612,10 @@ with main_tab2:
             st.metric("Total Reviews", len(available_data))
         with col2:
             if 'company' in available_data.columns:
-                st.metric("Companies", available_data['company'].nunique())
+                company_count = available_data['company'].nunique()
+                st.metric("Competitor Companies", company_count if company_count > 0 else "N/A")
             else:
-                st.metric("Companies", "N/A")
+                st.metric("Competitor Companies", "N/A")
         with col3:
             if 'source' in available_data.columns:
                 st.metric("Sources", available_data['source'].nunique())
