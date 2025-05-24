@@ -366,24 +366,26 @@ with main_tab1:
                     all_scraped_data.append(google_data)
                 
                 completed_sources += 1
-                overall_progress.progress(completed_sources / total_sources)
+                main_progress.progress(completed_sources / total_sources)
+                google_status.success("✅ Google Play Store - Complete")
                 
                 # Scrape Trustpilot reviews
-                with overall_status:
-                    st.info("🌐 Starting Trustpilot data collection...")
+                status_display.info("🌐 Starting Trustpilot data collection...")
+                trustpilot_status.info("🔍 Trustpilot")
                 
                 trustpilot_data = scrape_trustpilot_reviews(
                     company_url=main_company['trustpilot_url'],
                     max_reviews=main_company['trustpilot_count'],
                     company_name=main_company['name'],
-                    progress_container=trustpilot_progress
+                    progress_container=None
                 )
                 
                 if not trustpilot_data.empty:
                     all_scraped_data.append(trustpilot_data)
                 
                 completed_sources += 1
-                overall_progress.progress(completed_sources / total_sources)
+                main_progress.progress(completed_sources / total_sources)
+                trustpilot_status.success("✅ Trustpilot - Complete")
                 
                 # Process competitors if any
                 for i, competitor in enumerate(config['competitors']):
@@ -415,8 +417,7 @@ with main_tab1:
                     st.session_state.scraping_completed = True
                     st.session_state.scraping_in_progress = False
                     
-                    with overall_status:
-                        st.success(f"✅ Data collection completed! Collected {len(combined_data)} total reviews")
+                    status_display.success(f"✅ Data collection completed! Collected {len(combined_data)} total reviews")
                     
                     # Show scraped data preview
                     st.markdown("### 👀 Scraped Data Preview")
@@ -482,8 +483,7 @@ with main_tab1:
                         st.error(f"Error creating Excel file: {str(e)}")
                 
                 else:
-                    with overall_status:
-                        st.error("❌ No data was collected from any source")
+                    status_display.error("❌ No data was collected from any source")
                     st.session_state.scraping_in_progress = False
                     
             except Exception as e:
