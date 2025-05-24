@@ -326,15 +326,22 @@ with main_tab1:
         # Show scraping progress if in progress
         if st.session_state.scraping_in_progress:
             st.markdown("---")
-            st.subheader("🔄 Data Collection in Progress")
             
-            # Progress containers for each source
-            google_progress = st.container()
-            trustpilot_progress = st.container()
-            
-            # Overall progress
-            overall_progress = st.progress(0)
-            overall_status = st.empty()
+            # Clean, single progress container
+            progress_container = st.container()
+            with progress_container:
+                st.markdown("### 🔄 Data Collection in Progress")
+                
+                # Single main progress bar
+                main_progress = st.progress(0)
+                status_display = st.empty()
+                
+                # Compact status info
+                status_cols = st.columns(2)
+                with status_cols[0]:
+                    google_status = st.empty()
+                with status_cols[1]:
+                    trustpilot_status = st.empty()
             
             all_scraped_data = []
             total_sources = 2  # Google Play + Trustpilot for main company
@@ -345,14 +352,14 @@ with main_tab1:
                 main_company = config['main_company']
                 
                 # Scrape Google Play Store reviews
-                with overall_status:
-                    st.info("📱 Starting Google Play Store data collection...")
+                status_display.info("📱 Starting Google Play Store data collection...")
+                google_status.info("🔍 Google Play Store")
                 
                 google_data = scrape_google_play_reviews(
                     app_id=main_company['google_id'],
                     max_reviews=main_company['google_count'],
                     company_name=main_company['name'],
-                    progress_container=google_progress
+                    progress_container=None  # Use our clean progress system
                 )
                 
                 if not google_data.empty:
@@ -650,10 +657,10 @@ with main_tab2:
                             # Update progress
                             progress_bar.progress((idx + 1) / total_rows)
                             
-                            # Extract review content
-                            review_content = row['review_content']
+                            # Extract review content - handle both column formats
+                            review_content = row.get('Detailed Review', row.get('review_content', ''))
                             review_title = row.get('review_title', '')
-                            rating = row.get('rating', None)
+                            rating = row.get('Ratings on Playstore', row.get('rating', None))
                             
                             # Skip empty reviews with proper type checking
                             if pd.isna(review_content) or (isinstance(review_content, str) and review_content.strip() == ""):

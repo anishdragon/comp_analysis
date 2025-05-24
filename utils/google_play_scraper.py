@@ -94,7 +94,7 @@ class GooglePlayReviewsScraper:
         
         self.reviews = []
         batches = 0
-        batch_size = min(50, max_reviews)
+        batch_size = max(1, round(max_reviews / 2))
         
         try:
             # Update progress
