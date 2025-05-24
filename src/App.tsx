@@ -3,14 +3,13 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import { motion, AnimatePresence } from 'framer-motion'
 import Sidebar from './components/Sidebar'
-import Dashboard from './pages/DashboardNew'
+import Dashboard from './pages/Dashboard'
 import DataSourcing from './pages/DataSourcing'
 import Analysis from './pages/Analysis'
 import KnowledgeBase from './pages/KnowledgeBase'
 import Reviews from './pages/Reviews'
 import Settings from './pages/Settings'
 import ScrapeData from './pages/ScrapeData'
-import ComponentShowcase from './pages/ComponentShowcase'
 
 function App() {
   const [apiKey, setApiKey] = useState<string>('')
@@ -101,17 +100,6 @@ function App() {
                     transition={{ duration: 0.3 }}
                   >
                     <Reviews />
-                  </motion.div>
-                } />
-                <Route path="/showcase" element={
-                  <motion.div
-                    key="showcase"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <ComponentShowcase />
                   </motion.div>
                 } />
                 <Route path="/settings" element={
