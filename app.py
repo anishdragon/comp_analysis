@@ -639,13 +639,30 @@ with main_tab2:
         if st.session_state.analyzed_data is None:
             # Show analysis start button (API key check happens when clicked)
             if st.button("🔍 Start Analysis", key="start_analysis_btn", type="primary", use_container_width=True):
-                # NOW check if Anthropic API key is available
-                if not st.session_state.anthropic_api_key:
-                    show_error("Anthropic API key is required for analysis. Please enter it in the sidebar.")
-                else:
-                    # Clear any previous errors
+                # Validate API key before starting analysis
+                api_key = st.session_state.anthropic_api_key
+                if not api_key or api_key.strip() == "":
+                    show_error("❌ Anthropic API key is required for analysis. Please enter it in the sidebar.")
+                    st.stop()
+                
+                # Test the API key validity
+                try:
+                    from utils.anthropic_helper import get_anthropic_client
+                    test_client = get_anthropic_client(api_key)
+                    # Simple test call to verify key works
+                    test_response = test_client.messages.create(
+                        model="claude-3-5-sonnet-20241022",
+                        max_tokens=10,
+                        messages=[{"role": "user", "content": "test"}]
+                    )
+                    # If we get here, the key works
                     show_error("")
-                    with st.spinner("Analyzing reviews. This may take a few minutes..."):
+                except Exception as e:
+                    show_error(f"❌ Invalid Anthropic API key. Please check your key and try again. Error: {str(e)}")
+                    st.stop()
+                
+                # If we reach here, the API key is valid - proceed with analysis
+                with st.spinner("Analyzing reviews. This may take a few minutes..."):
                         # Create progress bar
                         progress_bar = st.progress(0)
                         
@@ -739,44 +756,44 @@ with main_tab2:
                                 categories['emotion'].append('Neutral')
                                 categories['urgency'].append('Medium')
                             
-                    # Store analyzed data and categories in session state
-                    st.session_state.analyzed_data = analyzed_data
-                    st.session_state.categories = categories
+                # Store analyzed data and categories in session state
+                st.session_state.analyzed_data = analyzed_data
+                st.session_state.categories = categories
+                
+                # Show analysis errors if any happened
+                if hasattr(st.session_state, 'analysis_errors') and st.session_state.analysis_errors:
+                    if len(st.session_state.analysis_errors) > 3:
+                        show_error(f"Some reviews had analysis issues ({len(st.session_state.analysis_errors)} total). Analysis continued with default values for these reviews.")
+                    else:
+                        show_error(f"Issues during analysis: {', '.join(st.session_state.analysis_errors[:3])}")
+                
+                # Generate knowledge base summaries
+                with st.spinner("Generating knowledge base summaries..."):
+                    knowledge_base = {}
                     
-                    # Show analysis errors if any happened
-                    if hasattr(st.session_state, 'analysis_errors') and st.session_state.analysis_errors:
-                        if len(st.session_state.analysis_errors) > 3:
-                            show_error(f"Some reviews had analysis issues ({len(st.session_state.analysis_errors)} total). Analysis continued with default values for these reviews.")
-                        else:
-                            show_error(f"Issues during analysis: {', '.join(st.session_state.analysis_errors[:3])}")
+                    # Get API key from session state for knowledge base generation
+                    api_key = st.session_state.anthropic_api_key
                     
-                    # Generate knowledge base summaries
-                    with st.spinner("Generating knowledge base summaries..."):
-                        knowledge_base = {}
+                    # Group by issue type
+                    issue_types = list(set(categories['issue_type']))
+                    
+                    for issue_type in issue_types:
+                        # Get all reviews for this issue type
+                        issue_reviews = [data.get('review_content', data.get('Detailed Review', '')) for data in analyzed_data 
+                                        if data['issue_type'] == issue_type]
                         
-                        # Get API key from session state for knowledge base generation
-                        api_key = st.session_state.anthropic_api_key
-                        
-                        # Group by issue type
-                        issue_types = list(set(categories['issue_type']))
-                        
-                        for issue_type in issue_types:
-                            # Get all reviews for this issue type
-                            issue_reviews = [data.get('review_content', data.get('Detailed Review', '')) for data in analyzed_data 
-                                            if data['issue_type'] == issue_type]
-                            
-                            if issue_reviews:
-                                try:
-                                    # Use Anthropic Claude for summarization with user-provided API key
-                                    summary = generate_category_summary(issue_type, issue_reviews, api_key)
-                                    knowledge_base[issue_type] = summary
-                                except Exception as e:
-                                    st.error(f"Error generating summary for {issue_type}: {str(e)}")
-                        
-                        # Store knowledge base in session state
-                        st.session_state.knowledge_base = knowledge_base
-                        
-                        st.success("✅ Analysis complete! Check the Analysis Results tab to see the insights.")
+                        if issue_reviews:
+                            try:
+                                # Use Anthropic Claude for summarization with user-provided API key
+                                summary = generate_category_summary(issue_type, issue_reviews, api_key)
+                                knowledge_base[issue_type] = summary
+                            except Exception as e:
+                                st.error(f"Error generating summary for {issue_type}: {str(e)}")
+                    
+                    # Store knowledge base in session state
+                    st.session_state.knowledge_base = knowledge_base
+                    
+                st.success("✅ Analysis complete! Check the Analysis Results tab to see the insights.")
 
 # Tab 2: Analysis Results  
 with main_tab2:
