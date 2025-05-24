@@ -17,7 +17,7 @@ from utils.trustpilot_scraper import scrape_trustpilot_reviews
 
 # Set page configuration
 st.set_page_config(
-    page_title="Review Analysis & Knowledge Base Creator",
+    page_title="Competition Analysis & Knowledge Base Creator",
     page_icon="📊",
     layout="wide",
 )
@@ -47,7 +47,7 @@ if 'error_placeholder' not in st.session_state:
     st.session_state.error_placeholder = None  # Single placeholder for all errors
 
 # Main app header
-st.title("🚀 Sentiment Analysis & Knowledge Base Creator")
+st.title("🚀 Competition Analysis & Knowledge Base Creator")
 st.markdown("**Get data from various sources or upload existing data to analyze sentiment, categorize issues, and build a comprehensive knowledge base**")
 
 # Create a centralized error placeholder (only created once)
