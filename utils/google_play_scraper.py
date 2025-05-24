@@ -121,18 +121,22 @@ class GooglePlayReviewsScraper:
             cleaned_results = []
             for review in result:
                 cleaned_review = self._clean_review_data(review)
-                # Add company identifier and source
-                cleaned_review['company_name'] = company_name
-                cleaned_review['source'] = 'Google Play Store'
-                cleaned_review['scraped_at'] = datetime.now().isoformat()
-                # Standardize field names
-                cleaned_review['review_content'] = cleaned_review.get('content', '')
-                cleaned_review['review_title'] = cleaned_review.get('title', '')  # Google Play doesn't have titles
-                cleaned_review['rating'] = cleaned_review.get('score', None)
-                cleaned_review['username'] = cleaned_review.get('userName', '')
-                cleaned_review['datetime'] = cleaned_review.get('at', '')
+                # Create standardized columns as per user requirements
+                standardized_review = {
+                    'Review Id': cleaned_review.get('reviewId', ''),
+                    'User name as on Playstore': cleaned_review.get('userName', ''),
+                    'Detailed Review': cleaned_review.get('content', ''),
+                    'Ratings on Playstore': cleaned_review.get('score', None),
+                    'Other User Approval Count': cleaned_review.get('thumbsUpCount', 0),
+                    'App playstore version': cleaned_review.get('reviewCreatedVersion', ''),
+                    'Review Date time': cleaned_review.get('at', ''),
+                    'company_name': company_name,
+                    'source': 'Google Play Store',
+                    'scraped_at': datetime.now().isoformat(),
+                    'Review Title': ''  # Google Play doesn't have review titles
+                }
                 
-                cleaned_results.append(cleaned_review)
+                cleaned_results.append(standardized_review)
             
             self.reviews.extend(cleaned_results)
             
@@ -166,27 +170,22 @@ class GooglePlayReviewsScraper:
                     cleaned_batch = []
                     for review in batch:
                         cleaned_review = self._clean_review_data(review)
-                        # Add company identifier and source
-                        cleaned_review['company_name'] = company_name
-                        cleaned_review['source'] = 'Google Play Store'
-                        cleaned_review['scraped_at'] = datetime.now().isoformat()
-                        # Standardize field names
-                        cleaned_review['review_content'] = cleaned_review.get('content', '')
-                        cleaned_review['review_title'] = cleaned_review.get('title', '')
-                        cleaned_review['rating'] = cleaned_review.get('score', None)
-                        cleaned_review['username'] = cleaned_review.get('userName', '')
-                        # Convert datetime to string to avoid Arrow serialization issues
-                        at_value = cleaned_review.get('at', '')
-                        if at_value:
-                            try:
-                                # Convert datetime object to string if needed
-                                cleaned_review['datetime'] = str(at_value)
-                            except:
-                                cleaned_review['datetime'] = str(at_value)
-                        else:
-                            cleaned_review['datetime'] = ''
+                        # Create standardized columns as per user requirements
+                        standardized_review = {
+                            'Review Id': cleaned_review.get('reviewId', ''),
+                            'User name as on Playstore': cleaned_review.get('userName', ''),
+                            'Detailed Review': cleaned_review.get('content', ''),
+                            'Ratings on Playstore': cleaned_review.get('score', None),
+                            'Other User Approval Count': cleaned_review.get('thumbsUpCount', 0),
+                            'App playstore version': cleaned_review.get('reviewCreatedVersion', ''),
+                            'Review Date time': cleaned_review.get('at', ''),
+                            'company_name': company_name,
+                            'source': 'Google Play Store',
+                            'scraped_at': datetime.now().isoformat(),
+                            'Review Title': ''  # Google Play doesn't have review titles
+                        }
                         
-                        cleaned_batch.append(cleaned_review)
+                        cleaned_batch.append(standardized_review)
                     
                     self.reviews.extend(cleaned_batch)
                     

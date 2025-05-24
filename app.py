@@ -219,6 +219,8 @@ with main_tab1:
             with col1:
                 main_company = st.text_input("Company Name*", placeholder="e.g., Target")
                 google_app_id = st.text_input("Google Play Store App ID*", placeholder="e.g., com.target.ui")
+                st.caption("💡 Find this in the Google Play Store URL after 'id='")
+            
             
             with col2:
                 trustpilot_url = st.text_input("Trustpilot Company URL*", placeholder="e.g., https://www.trustpilot.com/review/target.com")
@@ -273,12 +275,41 @@ with main_tab1:
             submitted = st.form_submit_button("🚀 Start Data Collection", type="primary", use_container_width=True)
             
             if submitted:
-                # Validate required fields (NO API KEY REQUIRED FOR SCRAPING)
-                if not all([main_company, google_app_id, trustpilot_url]):
-                    st.error("❌ Please fill in all required main company fields (marked with *)")
-                else:
-                    st.session_state.scraping_in_progress = True
+                # Validate required fields - at least one source required for main company
+                if not main_company:
+                    st.error("❌ Company Name is required")
+                elif not (google_app_id or trustpilot_url):
+                    st.error("❌ At least one of Google Play Store App ID or Trustpilot Company URL is required")
+                elif competitor_count > 0:
+                    # Validate competitor data if competitors are selected
+                    valid_competitors = True
+                    for i, comp in enumerate(competitors_data):
+                        if not comp['name']:
+                            st.error(f"❌ Competitor {i+1} Name is required")
+                            valid_competitors = False
+                            break
+                        elif not (comp['google_app_id'] or comp['trustpilot_url']):
+                            st.error(f"❌ Competitor {i+1} requires at least one source (Google Play ID or Trustpilot URL)")
+                            valid_competitors = False
+                            break
                     
+                    if valid_competitors:
+                        st.session_state.scraping_in_progress = True
+                        # Store scraping configuration
+                        st.session_state.scraping_config = {
+                            'main_company': {
+                                'name': main_company,
+                                'google_id': google_app_id,
+                                'trustpilot_url': trustpilot_url,
+                                'google_count': google_review_count,
+                                'trustpilot_count': trustpilot_review_count
+                            },
+                            'competitors': competitors_data
+                        }
+                        st.rerun()
+                else:
+                    # No competitors, just validate main company and proceed
+                    st.session_state.scraping_in_progress = True
                     # Store scraping configuration
                     st.session_state.scraping_config = {
                         'main_company': {
@@ -1094,4 +1125,11 @@ with main_tab4:
 
 # Footer
 st.markdown("---")
-st.markdown("Review Analysis & Knowledge Base Creator | Built with Streamlit")
+st.markdown(
+    """
+    <div style='text-align: center; color: #666; padding: 20px;'>
+        Created By: <a href="https://www.linkedin.com/in/anish-prasad-37b16646/" target="_blank" style="color: #0066cc; text-decoration: none;">Anish Prasad</a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)

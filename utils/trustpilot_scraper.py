@@ -190,18 +190,22 @@ class TrustpilotScraper:
                             
                         review_data = self._parse_review_soup(review_element)
                         if review_data:
-                            # Add company identifier and source
-                            review_data['company_name'] = company_name
-                            review_data['source'] = 'Trustpilot'
-                            # Standardize field names
-                            review_data['review_content'] = review_data.get('content', '')
-                            review_data['review_title'] = review_data.get('title', '')
-                            review_data['username'] = review_data.get('reviewer', '')
-                            # Convert datetime to string to avoid Arrow serialization issues
-                            date_value = review_data.get('date', '')
-                            review_data['datetime'] = str(date_value) if date_value else ''
+                            # Create standardized columns as per user requirements
+                            standardized_review = {
+                                'Review Id': '',  # Trustpilot doesn't have review IDs
+                                'User name as on Playstore': review_data.get('reviewer', ''),
+                                'Detailed Review': review_data.get('content', ''),
+                                'Ratings on Playstore': review_data.get('rating', None),
+                                'Other User Approval Count': 0,  # Trustpilot doesn't have this
+                                'App playstore version': '',  # Trustpilot doesn't have this
+                                'Review Date time': review_data.get('date', ''),
+                                'company_name': company_name,
+                                'source': 'Trustpilot',
+                                'scraped_at': datetime.now().isoformat(),
+                                'Review Title': review_data.get('title', '')
+                            }
                             
-                            page_reviews.append(review_data)
+                            page_reviews.append(standardized_review)
                     
                     if not page_reviews:
                         logger.info("No more reviews found")
