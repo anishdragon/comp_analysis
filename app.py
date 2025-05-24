@@ -14,7 +14,6 @@ from utils.anthropic_helper import analyze_review, generate_category_summary
 # Import scraper functions
 from utils.google_play_scraper import scrape_google_play_reviews
 from utils.trustpilot_scraper import scrape_trustpilot_reviews
-from utils.ecommerce_scraper import scrape_ecommerce_reviews
 
 # Set page configuration
 st.set_page_config(
@@ -223,14 +222,6 @@ with main_tab1:
             
             with col2:
                 trustpilot_url = st.text_input("Trustpilot Company URL*", placeholder="e.g., https://www.trustpilot.com/review/target.com")
-            
-            # E-commerce scraping section
-            st.markdown("### 🛒 E-commerce Website Scraping")
-            col_ec1, col_ec2 = st.columns(2)
-            with col_ec1:
-                ecommerce_url = st.text_input("Enter E-commerce Website URL", placeholder="e.g., https://www.target.com")
-            with col_ec2:
-                ecommerce_product_count = st.number_input("Count of Product Data to be Scraped", min_value=1, max_value=200, value=50)
                 
             col3, col4 = st.columns(2)
             with col3:
@@ -294,10 +285,8 @@ with main_tab1:
                             'name': main_company,
                             'google_id': google_app_id,
                             'trustpilot_url': trustpilot_url,
-                            'ecommerce_url': ecommerce_url,
                             'google_count': google_review_count,
-                            'trustpilot_count': trustpilot_review_count,
-                            'ecommerce_count': ecommerce_product_count
+                            'trustpilot_count': trustpilot_review_count
                         },
                         'competitors': competitors_data
                     }
@@ -311,18 +300,13 @@ with main_tab1:
             # Progress containers for each source
             google_progress = st.container()
             trustpilot_progress = st.container()
-            ecommerce_progress = st.container()
             
             # Overall progress
             overall_progress = st.progress(0)
             overall_status = st.empty()
             
             all_scraped_data = []
-            # Count sources: Google Play + Trustpilot + E-commerce (if URL provided)
-            config = st.session_state.scraping_config
-            total_sources = 2  # Google Play + Trustpilot
-            if config['main_company'].get('ecommerce_url'):
-                total_sources += 1
+            total_sources = 2  # Google Play + Trustpilot for main company
             completed_sources = 0
             
             try:
@@ -362,24 +346,6 @@ with main_tab1:
                 
                 completed_sources += 1
                 overall_progress.progress(completed_sources / total_sources)
-                
-                # Scrape E-commerce reviews if URL provided
-                if main_company.get('ecommerce_url'):
-                    with overall_status:
-                        st.info("🛒 Starting E-commerce website data collection...")
-                    
-                    ecommerce_data = scrape_ecommerce_reviews(
-                        website_url=main_company['ecommerce_url'],
-                        max_products=main_company['ecommerce_count'],
-                        company_name=main_company['name'],
-                        progress_container=ecommerce_progress
-                    )
-                    
-                    if not ecommerce_data.empty:
-                        all_scraped_data.append(ecommerce_data)
-                    
-                    completed_sources += 1
-                    overall_progress.progress(completed_sources / total_sources)
                 
                 # Process competitors if any
                 for i, competitor in enumerate(config['competitors']):
