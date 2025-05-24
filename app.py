@@ -611,8 +611,15 @@ with main_tab2:
         with col1:
             st.metric("Total Reviews", len(available_data))
         with col2:
-            if 'company' in available_data.columns:
-                company_count = available_data['company'].nunique()
+            # Check for company column with different possible names
+            company_col = None
+            for col_name in ['company', 'Company', 'Company Name', 'company_name']:
+                if col_name in available_data.columns:
+                    company_col = col_name
+                    break
+            
+            if company_col:
+                company_count = available_data[company_col].nunique()
                 st.metric("Competitor Companies", company_count if company_count > 0 else "N/A")
             else:
                 st.metric("Competitor Companies", "N/A")
@@ -755,7 +762,7 @@ with main_tab2:
                         
                         for issue_type in issue_types:
                             # Get all reviews for this issue type
-                            issue_reviews = [data['review_content'] for data in analyzed_data 
+                            issue_reviews = [data.get('review_content', data.get('Detailed Review', '')) for data in analyzed_data 
                                             if data['issue_type'] == issue_type]
                             
                             if issue_reviews:
@@ -779,8 +786,23 @@ with main_tab2:
         # Show categorized data
         analyzed_df = pd.DataFrame(st.session_state.analyzed_data)
         
-        # Basic columns for display
-        display_columns = ['username', 'review_content', 'sentiment', 'aspect', 'issue_type', 'confidence']
+        # Basic columns for display - use actual column names from scraped data
+        available_cols = analyzed_df.columns.tolist()
+        display_columns = []
+        
+        # Map to actual column names
+        column_mapping = {
+            'User name as on Playstore': 'username',
+            'Detailed Review': 'review_content',
+            'sentiment': 'sentiment',
+            'aspect': 'aspect', 
+            'issue_type': 'issue_type',
+            'confidence': 'confidence'
+        }
+        
+        for actual_col, display_name in column_mapping.items():
+            if actual_col in available_cols:
+                display_columns.append(actual_col)
         
         # Add enhanced sentiment analysis columns if available
         enhanced_columns = []
